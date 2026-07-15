@@ -12,11 +12,11 @@
             <p class="mt-1 text-sm text-muted">
                 @if (Library.Tracks.Count > 0)
                 {
-                    @($"{Library.Albums.Count} Alben · {Library.Tracks.Count} Titel")
+                    @($"{Library.Artists.Count} Künstler · {Library.Albums.Count} Alben · {Library.Tracks.Count} Titel")
                 }
                 else
                 {
-                    @("Lokale MP3- und FLAC-Dateien, schön aufgeräumt.")
+                    @("Lokale MP3- und FLAC-Dateien, nach Künstlern geordnet.")
                 }
             </p>
         </div>
@@ -33,95 +33,132 @@
             <p class="mt-4 text-sm">Sammlung wird eingelesen …</p>
         </div>
     }
-    else if (Library.Albums.Count == 0)
+    else if (Library.Artists.Count == 0)
     {
         <div class="mt-20 flex flex-col items-center justify-center text-center">
             <div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-surface">
-                <svg class="h-7 w-7 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" />
-                </svg>
+                <svg class="h-7 w-7 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></svg>
             </div>
             <h2 class="mt-4 text-lg font-medium">Noch keine Musik</h2>
-            <p class="mt-1 max-w-sm text-sm text-muted">
-                Wähle einen Ordner mit deinen Musikdateien, um deine Sammlung zu importieren.
-            </p>
-            <button @onclick="ImportAsync"
-                    class="mt-5 rounded-full bg-accent px-5 py-2.5 text-sm font-medium text-white transition hover:opacity-90">
-                Ordner auswählen
-            </button>
+            <p class="mt-1 max-w-sm text-sm text-muted">Wähle einen Ordner mit deinen Musikdateien, um deine Sammlung zu importieren.</p>
+            <button @onclick="ImportAsync" class="mt-5 rounded-full bg-accent px-5 py-2.5 text-sm font-medium text-white hover:opacity-90">Ordner auswählen</button>
         </div>
     }
     else
     {
-        <!-- Sort toolbar -->
-        <div class="mt-6 flex items-center gap-3">
-            <span class="text-xs uppercase tracking-wide text-muted">Sortieren</span>
-            <div class="inline-flex rounded-full bg-surface p-1 text-sm">
-                <button @onclick="() => _sortByTitle = false"
-                        class="rounded-full px-3 py-1 transition-colors @(_sortByTitle ? "text-muted" : "bg-surface-2 text-ink")">
-                    Künstler
-                </button>
-                <button @onclick="() => _sortByTitle = true"
-                        class="rounded-full px-3 py-1 transition-colors @(_sortByTitle ? "bg-surface-2 text-ink" : "text-muted")">
-                    Titel
-                </button>
+        <div class="mt-6 flex flex-wrap items-center gap-3">
+            <label class="relative min-w-64 flex-1">
+                <span class="sr-only">Mediathek durchsuchen</span>
+                <svg class="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+                <input @bind="_searchText" @bind:event="oninput" placeholder="Künstler, Album oder Song suchen"
+                       class="w-full rounded-full border border-line bg-surface py-2 pl-10 pr-4 text-sm text-ink outline-none placeholder:text-muted focus:border-accent" />
+            </label>
+
+            <div class="inline-flex rounded-full bg-surface p-1 text-sm" aria-label="Dateiformat filtern">
+                @foreach (var option in FormatOptions)
+                {
+                    <button @onclick="() => _fileFilter = option.Value"
+                            class="rounded-full px-3 py-1 transition-colors @(_fileFilter == option.Value ? "bg-surface-2 text-ink" : "text-muted")">
+                        @option.Label
+                    </button>
+                }
+            </div>
+
+            <div class="inline-flex rounded-full bg-surface p-1 text-sm" aria-label="Sortierung">
+                <button @onclick="() => _sortByTrackCount = false"
+                        class="rounded-full px-3 py-1 transition-colors @(_sortByTrackCount ? "text-muted" : "bg-surface-2 text-ink")">Künstler</button>
+                <button @onclick="() => _sortByTrackCount = true"
+                        class="rounded-full px-3 py-1 transition-colors @(_sortByTrackCount ? "bg-surface-2 text-ink" : "text-muted")">Titelanzahl</button>
             </div>
         </div>
 
-        <div class="mt-5 grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-5">
-            @foreach (var album in SortedAlbums)
-            {
-                <div @onclick="() => OpenAlbum(album.Id)" class="group cursor-pointer text-left">
-                    <div class="relative aspect-square w-full overflow-hidden rounded-xl bg-surface shadow-lg shadow-black/30">
-                        @if (album.CoverArtDataUri is not null)
-                        {
-                            <img src="@album.CoverArtDataUri" alt="@album.Title"
-                                 class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
-                        }
-                        else
-                        {
-                            <div class="flex h-full w-full items-center justify-center">
-                                <svg class="h-10 w-10 text-line" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                                    <path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" />
-                                </svg>
-                            </div>
-                        }
-                        <button @onclick="() => Playback.Play(album.Tracks)" @onclick:stopPropagation
-                                class="absolute bottom-2 right-2 flex h-11 w-11 translate-y-2 items-center justify-center rounded-full bg-accent opacity-0 shadow-xl transition-all duration-200 group-hover:translate-y-0 group-hover:opacity-100"
-                                aria-label="Album abspielen">
-                            <svg class="h-5 w-5 translate-x-px text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
-                        </button>
-                    </div>
-                    <div class="mt-2 truncate text-sm font-medium text-ink">@album.Title</div>
-                    <div class="truncate text-xs text-muted">@album.Artist · @album.TrackCount Titel</div>
-                </div>
-            }
-        </div>
+        @if (VisibleArtists.Count == 0)
+        {
+            <div class="mt-20 flex flex-col items-center text-center text-muted">
+                <h2 class="text-lg font-medium text-ink">Keine Treffer</h2>
+                <p class="mt-1 text-sm">Passe Suche oder Dateiformat an.</p>
+                <button @onclick="ResetFilters" class="mt-4 text-sm text-accent hover:underline">Filter zurücksetzen</button>
+            </div>
+        }
+        else
+        {
+            <p class="mt-4 text-xs text-muted">@VisibleArtists.Count von @Library.Artists.Count Künstlern</p>
+            <div class="mt-3 grid grid-cols-[repeat(auto-fill,minmax(170px,1fr))] gap-6">
+                @foreach (var artist in VisibleArtists)
+                {
+                    <article @onclick="() => OpenArtist(artist.Id)" class="group min-w-0 cursor-pointer text-left">
+                        <div class="relative aspect-square overflow-hidden rounded-full bg-surface shadow-lg shadow-black/30">
+                            @if (artist.CoverArtDataUri is not null)
+                            {
+                                <img src="@artist.CoverArtDataUri" alt="@artist.Name" class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                            }
+                            else
+                            {
+                                <div class="flex h-full w-full items-center justify-center bg-gradient-to-br from-accent/30 to-surface">
+                                    <span class="text-4xl font-semibold text-accent">@Initials(artist.Name)</span>
+                                </div>
+                            }
+                            <button @onclick="() => Playback.Play(artist.Tracks)" @onclick:stopPropagation
+                                    class="absolute bottom-3 right-3 flex h-11 w-11 translate-y-2 items-center justify-center rounded-full bg-accent opacity-0 shadow-xl transition-all group-hover:translate-y-0 group-hover:opacity-100"
+                                    aria-label="Alle Titel von @artist.Name abspielen">
+                                <svg class="h-5 w-5 translate-x-px text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+                            </button>
+                        </div>
+                        <h2 class="mt-3 truncate text-center text-sm font-semibold text-ink">@artist.Name</h2>
+                        <p class="mt-0.5 truncate text-center text-xs text-muted">@artist.TrackCount Titel@(artist.AlbumCount > 0 ? $" · {artist.AlbumCount} Alben" : "")</p>
+                    </article>
+                }
+            </div>
+        }
     }
 </div>
 
 @code {
-    private bool _sortByTitle;
+    private bool _sortByTrackCount;
+    private string _searchText = "";
+    private AudioFileFilter _fileFilter = AudioFileFilter.All;
 
-    private IReadOnlyList<Album> SortedAlbums =>
-        _sortByTitle
-            ? Library.Albums
-                .OrderBy(a => a.Title, StringComparer.CurrentCultureIgnoreCase)
-                .ThenBy(a => a.Artist, StringComparer.CurrentCultureIgnoreCase)
-                .ToList()
-            : Library.Albums; // service already sorts by artist, then title
+    private static readonly (AudioFileFilter Value, string Label)[] FormatOptions =
+    [
+        (AudioFileFilter.All, "Alle"),
+        (AudioFileFilter.Mp3, "MP3"),
+        (AudioFileFilter.Flac, "FLAC")
+    ];
+
+    private IReadOnlyList<Artist> VisibleArtists
+    {
+        get
+        {
+            var artists = LibraryFilter.Apply(Library.Artists, _searchText, _fileFilter);
+            return _sortByTrackCount
+                ? artists.OrderByDescending(artist => artist.TrackCount)
+                    .ThenBy(artist => artist.Name, StringComparer.CurrentCultureIgnoreCase)
+                    .ToList()
+                : artists;
+        }
+    }
 
     protected override void OnInitialized() => Library.Changed += OnLibraryChanged;
-
     private void OnLibraryChanged(object? sender, EventArgs e) => InvokeAsync(StateHasChanged);
-
-    private void OpenAlbum(string id) => Nav.NavigateTo($"/album/{id}");
+    private void OpenArtist(string id) => Nav.NavigateTo($"/artist/{id}");
 
     private async Task ImportAsync()
     {
         var folder = await FolderPicker.PickFolderAsync();
         if (!string.IsNullOrEmpty(folder))
             await Library.ImportFolderAsync(folder);
+    }
+
+    private void ResetFilters()
+    {
+        _searchText = "";
+        _fileFilter = AudioFileFilter.All;
+    }
+
+    private static string Initials(string name)
+    {
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return string.Concat(parts.Take(2).Select(part => char.ToUpperInvariant(part[0])));
     }
 
     public void Dispose() => Library.Changed -= OnLibraryChanged;

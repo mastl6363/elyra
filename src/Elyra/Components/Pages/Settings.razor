@@ -1,8 +1,248 @@
 @page "/settings"
+@inject MusicLibraryService Library
+@inject FolderPickerService FolderPicker
+@inject PlaybackService Playback
+@inject MusicBrainzMetadataService MusicBrainz
+@implements IDisposable
 
-<div class="px-8 py-6">
+<div class="mx-auto max-w-3xl px-8 py-6">
     <header>
         <h1 class="text-2xl font-semibold tracking-tight">Einstellungen</h1>
-        <p class="mt-1 text-sm text-muted">Wiedergabe, Bibliotheks-Ordner und Aussehen — folgt in Kürze.</p>
+        <p class="mt-1 text-sm text-muted">Mediathek und Wiedergabe verwalten.</p>
     </header>
+
+    <section class="mt-8 overflow-hidden rounded-xl border border-line bg-surface">
+        <div class="border-b border-line px-5 py-4">
+            <h2 class="font-medium">Mediathek</h2>
+            <p class="mt-1 text-xs text-muted">Die eingelesene Sammlung wird lokal gespeichert und beim nächsten Start sofort wiederhergestellt.</p>
+        </div>
+        <div class="space-y-5 px-5 py-5">
+            <div>
+                <div class="text-xs uppercase tracking-wide text-muted">Musikordner</div>
+                <div class="mt-1 break-all text-sm text-ink">@(Library.FolderPath ?? "Noch kein Ordner ausgewählt")</div>
+                @if (Library.Tracks.Count > 0)
+                {
+                    <div class="mt-1 text-xs text-muted">@Library.Albums.Count Alben · @Library.Tracks.Count Titel</div>
+                }
+            </div>
+
+            <div class="flex flex-wrap gap-2">
+                <button @onclick="ChooseFolderAsync" disabled="@Library.IsScanning"
+                        class="rounded-full bg-accent px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50">
+                    Ordner ändern
+                </button>
+                <button @onclick="RefreshAsync" disabled="@(Library.IsScanning || Library.FolderPath is null)"
+                        class="rounded-full bg-surface-2 px-4 py-2 text-sm text-ink hover:bg-line disabled:opacity-50">
+                    Neu einlesen
+                </button>
+                <button @onclick="ClearLibrary" disabled="@(Library.FolderPath is null)"
+                        class="rounded-full bg-surface-2 px-4 py-2 text-sm text-ink hover:bg-line disabled:opacity-50">
+                    Mediathek entfernen
+                </button>
+            </div>
+
+            @if (Library.IsScanning)
+            {
+                <div class="flex items-center gap-2 text-sm text-muted">
+                    <div class="h-4 w-4 animate-spin rounded-full border-2 border-line border-t-accent"></div>
+                    Sammlung wird eingelesen …
+                </div>
+            }
+            @if (!string.IsNullOrEmpty(_message))
+            {
+                <p class="text-sm @(_isError ? "text-red-400" : "text-muted")">@_message</p>
+            }
+        </div>
+    </section>
+
+    <section class="mt-5 overflow-hidden rounded-xl border border-line bg-surface">
+        <div class="border-b border-line px-5 py-4">
+            <h2 class="font-medium">Online-Metadaten</h2>
+            <p class="mt-1 text-xs text-muted">Fehlende Alben manuell über MusicBrainz ergänzen. Künstler und Titel werden dafür an MusicBrainz übertragen; MP3-Dateien bleiben unverändert.</p>
+        </div>
+        <div class="space-y-4 px-5 py-5">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    <div class="text-sm text-ink">@MissingAlbumCount Titel ohne Album</div>
+                    <div class="mt-1 text-xs text-muted">@EligibleMetadataCount davon haben eine auswertbare Dauer. Nur passende offizielle Alben und EPs werden lokal übernommen.</div>
+                </div>
+                <div class="flex gap-2">
+                    <button @onclick="EnrichMetadataAsync" disabled="@(_isEnriching || EligibleMetadataCount == 0)"
+                            class="rounded-full bg-accent px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50">
+                        Online-Abgleich starten
+                    </button>
+                    @if (_isEnriching)
+                    {
+                        <button @onclick="CancelEnrichment" class="rounded-full bg-surface-2 px-4 py-2 text-sm text-ink hover:bg-line">Abbrechen</button>
+                    }
+                </div>
+            </div>
+
+            @if (_metadataProgress is not null)
+            {
+                <div>
+                    <div class="mb-2 flex justify-between text-xs text-muted">
+                        <span class="truncate pr-4">@_metadataProgress.CurrentTrack</span>
+                        <span class="shrink-0">@_metadataProgress.Completed / @_metadataProgress.Total</span>
+                    </div>
+                    <div class="h-1.5 overflow-hidden rounded-full bg-surface-2">
+                        <div class="h-full rounded-full bg-accent transition-all" style="width:@MetadataProgressPercent%"></div>
+                    </div>
+                    <div class="mt-2 text-xs text-muted">@_metadataProgress.Matched ergänzt · @_metadataProgress.Skipped ohne sicheren Treffer · @_metadataProgress.Failed fehlgeschlagen</div>
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(_metadataMessage))
+            {
+                <p class="text-sm text-muted">@_metadataMessage</p>
+            }
+        </div>
+    </section>
+
+    <section class="mt-5 overflow-hidden rounded-xl border border-line bg-surface">
+        <div class="border-b border-line px-5 py-4">
+            <h2 class="font-medium">Wiedergabe</h2>
+        </div>
+        <div class="flex items-center justify-between gap-6 px-5 py-5">
+            <div>
+                <div class="text-sm text-ink">Lautstärke</div>
+                <div class="mt-1 text-xs text-muted">Gilt für die aktuelle App-Sitzung.</div>
+            </div>
+            <div class="flex min-w-52 items-center gap-3">
+                <input type="range" class="elyra-range flex-1" min="0" max="100" value="@Playback.Volume"
+                       style="@VolumeStyle" @oninput="OnVolume" />
+                <span class="w-9 text-right text-xs tabular-nums text-muted">@Playback.Volume%</span>
+            </div>
+        </div>
+    </section>
+
+    <section class="mt-5 rounded-xl border border-line bg-surface px-5 py-4">
+        <div class="text-sm font-medium">Elyra</div>
+        <div class="mt-1 text-xs text-muted">Version 1.0 · Lokaler, werbefreier MP3- und FLAC-Player</div>
+    </section>
 </div>
+
+@code {
+    private string? _message;
+    private bool _isError;
+    private bool _isEnriching;
+    private string? _metadataMessage;
+    private MetadataEnrichmentProgress? _metadataProgress;
+    private CancellationTokenSource? _metadataCancellation;
+
+    private int MissingAlbumCount => Library.Tracks.Count(track => string.IsNullOrWhiteSpace(track.Album));
+    private int EligibleMetadataCount => Library.Tracks.Count(track =>
+        string.IsNullOrWhiteSpace(track.Album) && track.Duration > TimeSpan.Zero);
+    private string MetadataProgressPercent => (_metadataProgress is { Total: > 0 }
+            ? (double)_metadataProgress.Completed / _metadataProgress.Total * 100
+            : 0)
+        .ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+
+    protected override void OnInitialized() => Library.Changed += OnLibraryChanged;
+
+    private void OnLibraryChanged(object? sender, EventArgs e) => InvokeAsync(StateHasChanged);
+
+    private async Task ChooseFolderAsync()
+    {
+        try
+        {
+            var folder = await FolderPicker.PickFolderAsync();
+            if (string.IsNullOrEmpty(folder))
+                return;
+
+            await Library.ImportFolderAsync(folder);
+            SetMessage("Mediathek wurde gespeichert.");
+        }
+        catch (Exception ex)
+        {
+            SetMessage(ex.Message, true);
+        }
+    }
+
+    private async Task RefreshAsync()
+    {
+        try
+        {
+            await Library.RefreshAsync();
+            SetMessage("Mediathek wurde aktualisiert.");
+        }
+        catch (Exception ex)
+        {
+            SetMessage(ex.Message, true);
+        }
+    }
+
+    private void ClearLibrary()
+    {
+        Library.Clear();
+        SetMessage("Gespeicherte Mediathek wurde entfernt.");
+    }
+
+    private async Task EnrichMetadataAsync()
+    {
+        _metadataCancellation?.Dispose();
+        _metadataCancellation = new CancellationTokenSource();
+        _isEnriching = true;
+        _metadataMessage = null;
+        _metadataProgress = null;
+
+        var progress = new Progress<MetadataEnrichmentProgress>(value =>
+        {
+            _metadataProgress = value;
+            _ = InvokeAsync(StateHasChanged);
+        });
+
+        try
+        {
+            var result = await MusicBrainz.EnrichMissingAlbumsAsync(
+                Library.Tracks,
+                progress,
+                _metadataCancellation.Token);
+            var applied = Library.ApplyMetadataUpdates(result.Updates);
+            _metadataMessage = $"Abgleich abgeschlossen: {applied} Titel ergänzt, {result.Skipped} ohne sicheren Treffer, {result.Failed} fehlgeschlagen.";
+        }
+        catch (OperationCanceledException)
+        {
+            _metadataMessage = "Online-Abgleich wurde abgebrochen.";
+        }
+        finally
+        {
+            _isEnriching = false;
+            _metadataCancellation?.Dispose();
+            _metadataCancellation = null;
+        }
+    }
+
+    private void CancelEnrichment() => _metadataCancellation?.Cancel();
+
+    private void OnVolume(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var volume))
+        {
+            Playback.Volume = volume;
+            StateHasChanged();
+        }
+    }
+
+    private string VolumeStyle
+    {
+        get
+        {
+            var value = Playback.Volume.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            return $"background:linear-gradient(to right, var(--color-accent) {value}%, var(--color-surface-2) {value}%)";
+        }
+    }
+
+    private void SetMessage(string message, bool isError = false)
+    {
+        _message = message;
+        _isError = isError;
+    }
+
+    public void Dispose()
+    {
+        Library.Changed -= OnLibraryChanged;
+        _metadataCancellation?.Cancel();
+        _metadataCancellation?.Dispose();
+    }
+}

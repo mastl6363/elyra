@@ -26,11 +26,15 @@ HTML triggert direkt native C#-Audio-/Datei-Funktionen. Keine Browser-Sandbox.
 **Phase 1 (MVP) — in Entwicklung.** Projekt ist gescaffoldet (`src/Elyra`,
 .NET 10, MAUI Blazor Hybrid), Solution `Elyra.slnx`. Integriert: Tailwind (npm,
 v4), LibVLCSharp + native Binaries pro Plattform, TagLib#. Funktionsfähig auf
-Windows: Ordner-Import, Metadaten-/Cover-Auslesen, Album-Grid (sortierbar nach
-Künstler/Titel), Album-Detail, Wiedergabe mit Player-Leiste (Play/Pause/Next/Prev/
+Windows: Ordner-Import, Metadaten-/Cover-Auslesen, künstlerzentrierte Mediathek
+mit Künstlerdetail, optionalen Albumgruppen und vollständigen Songlisten,
+Album-Detail, Wiedergabe mit Player-Leiste (Play/Pause/Next/Prev/
 Seek/Lautstärke, Auto-Advance), Now-Playing-Ansicht mit Queue, persistente
-Wiedergabelisten (JSON in AppData). Offen: Suche/Filter, Settings-Inhalt,
-Android/iOS-Tests.
+Wiedergabelisten (JSON in AppData), persistente Mediathek-Snapshots, Suche nach
+Album/Künstler/Titel, MP3-/FLAC-Filter und Einstellungen für Bibliothek und
+Wiedergabe sowie manueller MusicBrainz-Abgleich für fehlende Albumdaten.
+Automatisierte Tests decken Filter-, Persistenz-, Metadaten- und
+Bibliothekslogik ab. Offen: Android/iOS-Tests.
 
 ## Plattform-Ziel
 
@@ -49,6 +53,7 @@ MSBuild-Target `TailwindBuild`.
 
 - `npm run css:watch` (in `src/Elyra`) — Tailwind im Watch-Modus für UI-Arbeit
 - `dotnet build src/Elyra/Elyra.csproj -f net10.0-windows10.0.19041.0` — Windows-Build
+- `dotnet test tests/Elyra.Tests/Elyra.Tests.csproj` — automatisierte Tests
 - `dotnet build src/Elyra/Elyra.csproj -t:Run -f net10.0-windows10.0.19041.0` — App starten
 - Alternativ: `Elyra.slnx` in Visual Studio öffnen, F5
 
