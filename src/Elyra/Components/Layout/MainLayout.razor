@@ -1,0 +1,15 @@
+@inherits LayoutComponentBase
+
+<div class="flex h-screen flex-col bg-canvas text-ink">
+    <div class="flex flex-1 overflow-hidden">
+        <aside class="w-60 shrink-0 border-r border-line bg-surface">
+            <NavMenu />
+        </aside>
+
+        <main class="flex-1 overflow-y-auto">
+            @Body
+        </main>
+    </div>
+
+    <PlayerBar />
+</div>

@@ -1,0 +1,65 @@
+@page "/playlists"
+@inject PlaylistService PlaylistSvc
+@inject NavigationManager Nav
+@implements IDisposable
+
+<div class="px-8 py-6">
+    <header class="flex items-end justify-between gap-4">
+        <div>
+            <h1 class="text-2xl font-semibold tracking-tight">Wiedergabelisten</h1>
+            <p class="mt-1 text-sm text-muted">@PlaylistSvc.Playlists.Count Listen</p>
+        </div>
+        <button @onclick="CreateNew"
+                class="shrink-0 rounded-full bg-accent px-5 py-2.5 text-sm font-medium text-white transition hover:opacity-90">
+            Neue Wiedergabeliste
+        </button>
+    </header>
+
+    @if (PlaylistSvc.Playlists.Count == 0)
+    {
+        <div class="mt-20 flex flex-col items-center justify-center text-center">
+            <div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-surface">
+                <svg class="h-7 w-7 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 6h13M3 12h13M3 18h9M17 14v6M14 17h6" />
+                </svg>
+            </div>
+            <h2 class="mt-4 text-lg font-medium">Noch keine Wiedergabelisten</h2>
+            <p class="mt-1 max-w-sm text-sm text-muted">Erstelle eine Liste und füge Titel über das ＋ in der Mediathek hinzu.</p>
+        </div>
+    }
+    else
+    {
+        <div class="mt-6 flex flex-col divide-y divide-line overflow-hidden rounded-xl border border-line">
+            @foreach (var pl in PlaylistSvc.Playlists)
+            {
+                <button @onclick="() => Open(pl.Id)" class="flex items-center gap-4 px-4 py-3 text-left transition-colors hover:bg-surface-2">
+                    <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-accent/40 to-surface-2">
+                        <svg class="h-5 w-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M3 6h13M3 12h13M3 18h9M17 14v6M14 17h6" />
+                        </svg>
+                    </div>
+                    <div class="min-w-0 flex-1">
+                        <div class="truncate text-sm font-medium text-ink">@pl.Name</div>
+                        <div class="truncate text-xs text-muted">@pl.Count Titel</div>
+                    </div>
+                    <svg class="h-4 w-4 shrink-0 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6" /></svg>
+                </button>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    protected override void OnInitialized() => PlaylistSvc.Changed += OnChanged;
+    private void OnChanged(object? sender, EventArgs e) => InvokeAsync(StateHasChanged);
+
+    private void CreateNew()
+    {
+        var playlist = PlaylistSvc.Create();
+        Nav.NavigateTo($"/playlist/{playlist.Id}");
+    }
+
+    private void Open(string id) => Nav.NavigateTo($"/playlist/{id}");
+
+    public void Dispose() => PlaylistSvc.Changed -= OnChanged;
+}

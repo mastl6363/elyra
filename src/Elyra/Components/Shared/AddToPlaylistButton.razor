@@ -1,0 +1,54 @@
+@inject PlaylistService Playlists
+@implements IDisposable
+
+<div class="relative">
+    <button @onclick="Toggle" @onclick:stopPropagation
+            class="text-muted opacity-0 transition-colors hover:text-ink group-hover:opacity-100"
+            title="Zu Wiedergabeliste hinzufügen" aria-label="Zu Wiedergabeliste hinzufügen">
+        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14" /></svg>
+    </button>
+
+    @if (_open)
+    {
+        <div class="fixed inset-0 z-10" @onclick="Close"></div>
+        <div class="absolute right-0 z-20 mt-2 w-56 overflow-hidden rounded-lg border border-line bg-surface-2 py-1 shadow-xl" @onclick:stopPropagation>
+            <div class="px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-muted">Hinzufügen zu</div>
+            @if (Playlists.Playlists.Count == 0)
+            {
+                <div class="px-3 py-1.5 text-xs text-muted">Noch keine Wiedergabeliste</div>
+            }
+            @foreach (var pl in Playlists.Playlists)
+            {
+                <button @onclick="() => Add(pl.Id)" class="block w-full truncate px-3 py-1.5 text-left text-sm text-ink hover:bg-surface">@pl.Name</button>
+            }
+            <div class="my-1 border-t border-line"></div>
+            <button @onclick="CreateAndAdd" class="block w-full px-3 py-1.5 text-left text-sm text-accent hover:bg-surface">+ Neue Wiedergabeliste</button>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public Track Track { get; set; } = default!;
+    private bool _open;
+
+    protected override void OnInitialized() => Playlists.Changed += OnChanged;
+    private void OnChanged(object? sender, EventArgs e) => InvokeAsync(StateHasChanged);
+
+    private void Toggle() => _open = !_open;
+    private void Close() => _open = false;
+
+    private void Add(string playlistId)
+    {
+        Playlists.AddTrack(playlistId, Track);
+        _open = false;
+    }
+
+    private void CreateAndAdd()
+    {
+        var playlist = Playlists.Create();
+        Playlists.AddTrack(playlist.Id, Track);
+        _open = false;
+    }
+
+    public void Dispose() => Playlists.Changed -= OnChanged;
+}

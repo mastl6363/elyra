@@ -1,0 +1,14 @@
+{
+  "name": "elyra-styles",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Tailwind CSS build pipeline for the Elyra music player (MAUI Blazor Hybrid).",
+  "scripts": {
+    "css:build": "tailwindcss -i ./Styles/app.css -o ./wwwroot/css/app.css --minify",
+    "css:watch": "tailwindcss -i ./Styles/app.css -o ./wwwroot/css/app.css --watch"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.1.13",
+    "tailwindcss": "^4.1.13"
+  }
+}

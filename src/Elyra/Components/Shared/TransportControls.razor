@@ -1,0 +1,53 @@
+@inject PlaybackService Playback
+@inject AudioPlayerService Audio
+@implements IDisposable
+
+@{
+    var hasTrack = Playback.Current is not null;
+    var sideIcon = Large ? "h-7 w-7" : "h-5 w-5";
+    var playButton = Large ? "h-14 w-14" : "h-10 w-10";
+    var playIcon = Large ? "h-6 w-6" : "h-5 w-5";
+}
+
+<div class="flex items-center @(Large ? "gap-8" : "gap-5")">
+    <button @onclick="Playback.Previous" disabled="@(!hasTrack)"
+            class="text-muted transition-colors hover:text-ink disabled:opacity-40" aria-label="Zurück">
+        <svg class="@sideIcon" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h2v14H6zM20 5v14l-11-7z" /></svg>
+    </button>
+
+    <button @onclick="Playback.TogglePlayPause" disabled="@(!hasTrack)"
+            class="flex @playButton items-center justify-center rounded-full bg-ink text-canvas transition-transform hover:scale-105 disabled:opacity-40"
+            aria-label="@(Audio.IsPlaying ? "Pause" : "Abspielen")">
+        @if (Audio.IsPlaying)
+        {
+            <svg class="@playIcon" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z" /></svg>
+        }
+        else
+        {
+            <svg class="@playIcon translate-x-px" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+        }
+    </button>
+
+    <button @onclick="Playback.Next" disabled="@(!hasTrack)"
+            class="text-muted transition-colors hover:text-ink disabled:opacity-40" aria-label="Weiter">
+        <svg class="@sideIcon" viewBox="0 0 24 24" fill="currentColor"><path d="M16 5h2v14h-2zM4 5l11 7-11 7z" /></svg>
+    </button>
+</div>
+
+@code {
+    [Parameter] public bool Large { get; set; }
+
+    protected override void OnInitialized()
+    {
+        Playback.CurrentChanged += OnChanged;
+        Audio.StateChanged += OnChanged;
+    }
+
+    private void OnChanged(object? sender, EventArgs e) => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        Playback.CurrentChanged -= OnChanged;
+        Audio.StateChanged -= OnChanged;
+    }
+}

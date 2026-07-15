@@ -1,0 +1,36 @@
+# ── .NET / Visual Studio ──────────────────────────────────────────────
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.userprefs
+project.lock.json
+artifacts/
+
+# MAUI / mobile build artifacts
+*.binlog
+*.apk
+*.aab
+*.ipa
+*.app
+*.dSYM/
+Resources/raw/_unused/
+
+# ── Node / Tailwind ───────────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+node_modules/.install-stamp
+# Note: wwwroot/css/app.css is the committed Tailwind output. It is regenerated
+# by the MSBuild 'TailwindBuild' target so clean builds work without a prior npm run.
+
+# ── OS / Editor ───────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+
+# ── Secrets / local config (BYOS keys, Stripe, etc. — never commit) ────
+*.env
+appsettings.Local.json
+secrets.json

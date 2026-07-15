@@ -1,0 +1,103 @@
+@page "/now-playing"
+@inject PlaybackService Playback
+@inject AudioPlayerService Audio
+@implements IDisposable
+
+@{
+    var current = Playback.Current;
+}
+
+<div class="px-8 py-8">
+    @if (current is null)
+    {
+        <div class="mt-24 flex flex-col items-center justify-center text-center text-muted">
+            <svg class="h-12 w-12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" />
+            </svg>
+            <p class="mt-4 text-sm">Es läuft gerade nichts.</p>
+        </div>
+    }
+    else
+    {
+        <div class="flex flex-col items-center text-center">
+            <div class="h-64 w-64 overflow-hidden rounded-2xl bg-surface shadow-2xl shadow-black/40">
+                @if (current.CoverArtDataUri is not null)
+                {
+                    <img src="@current.CoverArtDataUri" alt="@current.Title" class="h-full w-full object-cover" />
+                }
+                else
+                {
+                    <div class="flex h-full w-full items-center justify-center">
+                        <svg class="h-16 w-16 text-line" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" />
+                        </svg>
+                    </div>
+                }
+            </div>
+
+            <h1 class="mt-6 max-w-xl truncate text-2xl font-semibold tracking-tight">@current.Title</h1>
+            <p class="mt-1 text-sm text-muted">@current.Artist · @current.Album</p>
+
+            <div class="mt-6 flex w-full max-w-md items-center gap-2 text-xs tabular-nums text-muted">
+                <span>@Format(Audio.Position)</span>
+                <input type="range" class="elyra-range flex-1" min="0" max="@MaxSeconds" value="@CurrentSeconds"
+                       style="@ProgressStyle" @onchange="OnSeek" />
+                <span>@Format(Audio.Duration)</span>
+            </div>
+
+            <div class="mt-6">
+                <TransportControls Large="true" />
+            </div>
+        </div>
+
+        @if (Playback.Queue.Count > 0)
+        {
+            <div class="mx-auto mt-12 max-w-2xl">
+                <h2 class="mb-2 px-3 text-xs font-medium uppercase tracking-wide text-muted">Als Nächstes</h2>
+                <TrackList Tracks="Playback.Queue" ShowAdd="true" />
+            </div>
+        }
+    }
+</div>
+
+@code {
+    protected override void OnInitialized()
+    {
+        Playback.CurrentChanged += OnChanged;
+        Audio.StateChanged += OnChanged;
+        Audio.PositionChanged += OnPosition;
+    }
+
+    private void OnChanged(object? sender, EventArgs e) => InvokeAsync(StateHasChanged);
+    private void OnPosition(object? sender, TimeSpan t) => InvokeAsync(StateHasChanged);
+
+    private int MaxSeconds => Math.Max(1, (int)Audio.Duration.TotalSeconds);
+    private int CurrentSeconds => (int)Audio.Position.TotalSeconds;
+
+    private void OnSeek(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var seconds))
+            Playback.Seek(TimeSpan.FromSeconds(seconds));
+    }
+
+    private string ProgressStyle
+    {
+        get
+        {
+            var d = Audio.Duration.TotalMilliseconds;
+            var pct = d > 0 ? Audio.Position.TotalMilliseconds / d * 100 : 0;
+            var p = pct.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+            return $"background:linear-gradient(to right, var(--color-accent) {p}%, var(--color-surface-2) {p}%)";
+        }
+    }
+
+    private static string Format(TimeSpan t) =>
+        t.TotalHours >= 1 ? t.ToString(@"h\:mm\:ss") : t.ToString(@"m\:ss");
+
+    public void Dispose()
+    {
+        Playback.CurrentChanged -= OnChanged;
+        Audio.StateChanged -= OnChanged;
+        Audio.PositionChanged -= OnPosition;
+    }
+}

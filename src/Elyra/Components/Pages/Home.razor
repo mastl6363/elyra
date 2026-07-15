@@ -1,0 +1,128 @@
+@page "/"
+@inject MusicLibraryService Library
+@inject FolderPickerService FolderPicker
+@inject PlaybackService Playback
+@inject NavigationManager Nav
+@implements IDisposable
+
+<div class="px-8 py-6">
+    <header class="flex items-end justify-between gap-4">
+        <div>
+            <h1 class="text-2xl font-semibold tracking-tight">Mediathek</h1>
+            <p class="mt-1 text-sm text-muted">
+                @if (Library.Tracks.Count > 0)
+                {
+                    @($"{Library.Albums.Count} Alben · {Library.Tracks.Count} Titel")
+                }
+                else
+                {
+                    @("Lokale MP3- und FLAC-Dateien, schön aufgeräumt.")
+                }
+            </p>
+        </div>
+        <button @onclick="ImportAsync" disabled="@Library.IsScanning"
+                class="shrink-0 rounded-full bg-accent px-5 py-2.5 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50">
+            Ordner auswählen
+        </button>
+    </header>
+
+    @if (Library.IsScanning)
+    {
+        <div class="mt-24 flex flex-col items-center justify-center text-center text-muted">
+            <div class="h-8 w-8 animate-spin rounded-full border-2 border-line border-t-accent"></div>
+            <p class="mt-4 text-sm">Sammlung wird eingelesen …</p>
+        </div>
+    }
+    else if (Library.Albums.Count == 0)
+    {
+        <div class="mt-20 flex flex-col items-center justify-center text-center">
+            <div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-surface">
+                <svg class="h-7 w-7 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" />
+                </svg>
+            </div>
+            <h2 class="mt-4 text-lg font-medium">Noch keine Musik</h2>
+            <p class="mt-1 max-w-sm text-sm text-muted">
+                Wähle einen Ordner mit deinen Musikdateien, um deine Sammlung zu importieren.
+            </p>
+            <button @onclick="ImportAsync"
+                    class="mt-5 rounded-full bg-accent px-5 py-2.5 text-sm font-medium text-white transition hover:opacity-90">
+                Ordner auswählen
+            </button>
+        </div>
+    }
+    else
+    {
+        <!-- Sort toolbar -->
+        <div class="mt-6 flex items-center gap-3">
+            <span class="text-xs uppercase tracking-wide text-muted">Sortieren</span>
+            <div class="inline-flex rounded-full bg-surface p-1 text-sm">
+                <button @onclick="() => _sortByTitle = false"
+                        class="rounded-full px-3 py-1 transition-colors @(_sortByTitle ? "text-muted" : "bg-surface-2 text-ink")">
+                    Künstler
+                </button>
+                <button @onclick="() => _sortByTitle = true"
+                        class="rounded-full px-3 py-1 transition-colors @(_sortByTitle ? "bg-surface-2 text-ink" : "text-muted")">
+                    Titel
+                </button>
+            </div>
+        </div>
+
+        <div class="mt-5 grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-5">
+            @foreach (var album in SortedAlbums)
+            {
+                <div @onclick="() => OpenAlbum(album.Id)" class="group cursor-pointer text-left">
+                    <div class="relative aspect-square w-full overflow-hidden rounded-xl bg-surface shadow-lg shadow-black/30">
+                        @if (album.CoverArtDataUri is not null)
+                        {
+                            <img src="@album.CoverArtDataUri" alt="@album.Title"
+                                 class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                        }
+                        else
+                        {
+                            <div class="flex h-full w-full items-center justify-center">
+                                <svg class="h-10 w-10 text-line" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" />
+                                </svg>
+                            </div>
+                        }
+                        <button @onclick="() => Playback.Play(album.Tracks)" @onclick:stopPropagation
+                                class="absolute bottom-2 right-2 flex h-11 w-11 translate-y-2 items-center justify-center rounded-full bg-accent opacity-0 shadow-xl transition-all duration-200 group-hover:translate-y-0 group-hover:opacity-100"
+                                aria-label="Album abspielen">
+                            <svg class="h-5 w-5 translate-x-px text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+                        </button>
+                    </div>
+                    <div class="mt-2 truncate text-sm font-medium text-ink">@album.Title</div>
+                    <div class="truncate text-xs text-muted">@album.Artist · @album.TrackCount Titel</div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private bool _sortByTitle;
+
+    private IReadOnlyList<Album> SortedAlbums =>
+        _sortByTitle
+            ? Library.Albums
+                .OrderBy(a => a.Title, StringComparer.CurrentCultureIgnoreCase)
+                .ThenBy(a => a.Artist, StringComparer.CurrentCultureIgnoreCase)
+                .ToList()
+            : Library.Albums; // service already sorts by artist, then title
+
+    protected override void OnInitialized() => Library.Changed += OnLibraryChanged;
+
+    private void OnLibraryChanged(object? sender, EventArgs e) => InvokeAsync(StateHasChanged);
+
+    private void OpenAlbum(string id) => Nav.NavigateTo($"/album/{id}");
+
+    private async Task ImportAsync()
+    {
+        var folder = await FolderPicker.PickFolderAsync();
+        if (!string.IsNullOrEmpty(folder))
+            await Library.ImportFolderAsync(folder);
+    }
+
+    public void Dispose() => Library.Changed -= OnLibraryChanged;
+}

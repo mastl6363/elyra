@@ -1,0 +1,99 @@
+@inject PlaybackService Playback
+@inject AudioPlayerService Audio
+@inject NavigationManager Nav
+@implements IDisposable
+
+@{
+    var current = Playback.Current;
+    var pos = Audio.Position;
+    var dur = Audio.Duration;
+    var hasTrack = current is not null;
+}
+
+<footer class="flex h-20 shrink-0 items-center gap-4 border-t border-line bg-surface px-4">
+
+    <!-- Now playing — click opens the full Now-Playing view -->
+    <button @onclick='() => Nav.NavigateTo("/now-playing")' class="flex w-64 items-center gap-3 text-left">
+        <div class="h-12 w-12 shrink-0 overflow-hidden rounded-md bg-surface-2">
+            @if (current?.CoverArtDataUri is not null)
+            {
+                <img src="@current.CoverArtDataUri" alt="" class="h-full w-full object-cover" />
+            }
+        </div>
+        <div class="min-w-0">
+            <div class="truncate text-sm font-medium text-ink">@(current?.Title ?? "Kein Titel")</div>
+            <div class="truncate text-xs text-muted">@(current?.Artist ?? "—")</div>
+        </div>
+    </button>
+
+    <!-- Transport + progress -->
+    <div class="flex flex-1 flex-col items-center gap-2">
+        <TransportControls />
+        <div class="flex w-full max-w-xl items-center gap-2 text-xs tabular-nums text-muted">
+            <span>@Format(pos)</span>
+            <input type="range" class="elyra-range flex-1" min="0" max="@MaxSeconds(dur)" value="@((int)pos.TotalSeconds)"
+                   style="@ProgressStyle(pos, dur)" disabled="@(!hasTrack)" @onchange="OnSeek" />
+            <span>@Format(dur)</span>
+        </div>
+    </div>
+
+    <!-- Volume -->
+    <div class="flex w-64 items-center justify-end gap-2 text-muted">
+        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M11 5 6 9H2v6h4l5 4z" /><path d="M15.5 8.5a5 5 0 0 1 0 7" /><path d="M19 5a9 9 0 0 1 0 14" />
+        </svg>
+        <input type="range" class="elyra-range w-24" min="0" max="100" value="@Playback.Volume"
+               style="@VolumeStyle()" @oninput="OnVolume" />
+    </div>
+</footer>
+
+@code {
+    protected override void OnInitialized()
+    {
+        Playback.CurrentChanged += OnChanged;
+        Audio.StateChanged += OnChanged;
+        Audio.PositionChanged += OnPosition;
+    }
+
+    private void OnChanged(object? sender, EventArgs e) => InvokeAsync(StateHasChanged);
+    private void OnPosition(object? sender, TimeSpan t) => InvokeAsync(StateHasChanged);
+
+    private void OnSeek(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var seconds))
+            Playback.Seek(TimeSpan.FromSeconds(seconds));
+    }
+
+    private void OnVolume(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var vol))
+            Playback.Volume = vol;
+    }
+
+    private static int MaxSeconds(TimeSpan dur) => Math.Max(1, (int)dur.TotalSeconds);
+
+    private static string Format(TimeSpan t) =>
+        t.TotalHours >= 1 ? t.ToString(@"h\:mm\:ss") : t.ToString(@"m\:ss");
+
+    private static string Fill(double pct)
+    {
+        // Invariant culture: CSS needs a '.' decimal separator, not the de-DE ','.
+        var p = pct.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+        return $"linear-gradient(to right, var(--color-accent) {p}%, var(--color-surface-2) {p}%)";
+    }
+
+    private static string ProgressStyle(TimeSpan pos, TimeSpan dur)
+    {
+        var pct = dur.TotalMilliseconds > 0 ? pos.TotalMilliseconds / dur.TotalMilliseconds * 100 : 0;
+        return $"background:{Fill(pct)}";
+    }
+
+    private string VolumeStyle() => $"background:{Fill(Playback.Volume)}";
+
+    public void Dispose()
+    {
+        Playback.CurrentChanged -= OnChanged;
+        Audio.StateChanged -= OnChanged;
+        Audio.PositionChanged -= OnPosition;
+    }
+}

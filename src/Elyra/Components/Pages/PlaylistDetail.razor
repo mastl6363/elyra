@@ -1,0 +1,106 @@
+@page "/playlist/{Id}"
+@inject PlaylistService Playlists
+@inject PlaybackService Playback
+@inject NavigationManager Nav
+@implements IDisposable
+
+@{
+    var playlist = Playlists.Find(Id);
+}
+
+@if (playlist is null)
+{
+    <div class="px-8 py-6">
+        <p class="text-sm text-muted">Wiedergabeliste nicht gefunden.</p>
+        <a href="playlists" class="mt-3 inline-block text-sm text-accent hover:underline">Zurück zu den Wiedergabelisten</a>
+    </div>
+}
+else
+{
+    var tracks = playlist.Tracks;
+    <div class="px-8 py-6">
+        <header class="flex items-end gap-5">
+            <div class="flex h-32 w-32 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-accent/40 to-surface">
+                <svg class="h-12 w-12 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 6h13M3 12h13M3 18h9M17 14v6M14 17h6" />
+                </svg>
+            </div>
+            <div class="min-w-0 flex-1">
+                <div class="text-xs uppercase tracking-wide text-muted">Wiedergabeliste</div>
+                @if (_editing)
+                {
+                    <input @bind="_name" @bind:event="oninput" @onkeydown="OnNameKey" autofocus
+                           class="mt-1 w-full max-w-md rounded-md border border-line bg-surface px-2 py-1 text-2xl font-semibold text-ink outline-none focus:border-accent" />
+                    <div class="mt-2 flex gap-2">
+                        <button @onclick="SaveName" class="rounded-md bg-accent px-3 py-1 text-xs font-medium text-white hover:opacity-90">Speichern</button>
+                        <button @onclick="() => _editing = false" class="rounded-md bg-surface-2 px-3 py-1 text-xs text-ink hover:bg-line">Abbrechen</button>
+                    </div>
+                }
+                else
+                {
+                    <h1 class="mt-1 truncate text-3xl font-semibold tracking-tight">@playlist.Name</h1>
+                }
+                <p class="mt-2 text-sm text-muted">@playlist.Count Titel</p>
+
+                <div class="mt-4 flex items-center gap-3">
+                    <button @onclick="() => Playback.Play(tracks)" disabled="@(tracks.Count == 0)"
+                            class="inline-flex items-center gap-2 rounded-full bg-accent px-5 py-2.5 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50">
+                        <svg class="h-4 w-4 translate-x-px" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+                        Abspielen
+                    </button>
+                    <button @onclick="StartRename" class="rounded-full bg-surface-2 px-4 py-2.5 text-sm text-ink transition-colors hover:bg-line">Umbenennen</button>
+                    <button @onclick="Delete" class="rounded-full bg-surface-2 px-4 py-2.5 text-sm text-ink transition-colors hover:bg-line">Löschen</button>
+                </div>
+            </div>
+        </header>
+
+        <div class="mt-8">
+            @if (tracks.Count == 0)
+            {
+                <p class="text-sm text-muted">Diese Liste ist leer. Füge Titel über das ＋ in der Mediathek oder im Album hinzu.</p>
+            }
+            else
+            {
+                <TrackList Tracks="tracks" ShowAdd="false" ShowRemove="true" OnRemove="RemoveTrack" />
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public string Id { get; set; } = "";
+
+    private bool _editing;
+    private string _name = "";
+
+    protected override void OnInitialized() => Playlists.Changed += OnChanged;
+    private void OnChanged(object? sender, EventArgs e) => InvokeAsync(StateHasChanged);
+
+    private void StartRename()
+    {
+        _name = Playlists.Find(Id)?.Name ?? "";
+        _editing = true;
+    }
+
+    private void SaveName()
+    {
+        Playlists.Rename(Id, _name);
+        _editing = false;
+    }
+
+    private void OnNameKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") SaveName();
+        else if (e.Key == "Escape") _editing = false;
+    }
+
+    private void Delete()
+    {
+        Playlists.Delete(Id);
+        Nav.NavigateTo("/playlists");
+    }
+
+    private void RemoveTrack(Track track) => Playlists.RemoveTrack(Id, track.FilePath);
+
+    public void Dispose() => Playlists.Changed -= OnChanged;
+}
