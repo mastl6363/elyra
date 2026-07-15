@@ -83,29 +83,37 @@
         else
         {
             <p class="mt-4 text-xs text-muted">@VisibleArtists.Count von @Library.Artists.Count Künstlern</p>
-            <div class="mt-3 grid grid-cols-[repeat(auto-fill,minmax(170px,1fr))] gap-6">
+            <div class="mt-3 overflow-visible rounded-xl border border-line bg-surface/40">
+                <div class="grid grid-cols-[2rem_minmax(0,1fr)_7rem_6rem_2rem] gap-3 border-b border-line px-4 py-2 text-xs uppercase tracking-wide text-muted">
+                    <span></span>
+                    <span>Künstler</span>
+                    <span class="text-right">Alben</span>
+                    <span class="text-right">Titel</span>
+                    <span></span>
+                </div>
                 @foreach (var artist in VisibleArtists)
                 {
-                    <article @onclick="() => OpenArtist(artist.Id)" class="group min-w-0 cursor-pointer text-left">
-                        <div class="relative aspect-square overflow-hidden rounded-full bg-surface shadow-lg shadow-black/30">
-                            @if (artist.CoverArtDataUri is not null)
+                    <article @onclick="() => OpenArtist(artist.Id)"
+                             class="group grid cursor-pointer grid-cols-[2rem_minmax(0,1fr)_7rem_6rem_2rem] items-center gap-3 border-b border-line/70 px-4 py-3 transition-colors last:border-b-0 hover:bg-surface-2">
+                        <button @onclick="() => Playback.Play(artist.Tracks)" @onclick:stopPropagation
+                                class="flex h-8 w-8 items-center justify-center rounded-full text-muted transition-colors hover:bg-accent hover:text-white"
+                                aria-label="Alle Titel von @artist.Name abspielen">
+                            <svg class="h-4 w-4 translate-x-px" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+                        </button>
+                        <div class="min-w-0">
+                            <h2 class="truncate text-sm font-medium text-ink group-hover:text-accent">@artist.Name</h2>
+                            @if (artist.Albums.Count > 0)
                             {
-                                <img src="@artist.CoverArtDataUri" alt="@artist.Name" class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                                <p class="mt-0.5 truncate text-xs text-muted">@string.Join(" · ", artist.Albums.Take(3).Select(album => album.Title))</p>
                             }
                             else
                             {
-                                <div class="flex h-full w-full items-center justify-center bg-gradient-to-br from-accent/30 to-surface">
-                                    <span class="text-4xl font-semibold text-accent">@Initials(artist.Name)</span>
-                                </div>
+                                <p class="mt-0.5 text-xs text-muted">Songs ohne Albumangabe</p>
                             }
-                            <button @onclick="() => Playback.Play(artist.Tracks)" @onclick:stopPropagation
-                                    class="absolute bottom-3 right-3 flex h-11 w-11 translate-y-2 items-center justify-center rounded-full bg-accent opacity-0 shadow-xl transition-all group-hover:translate-y-0 group-hover:opacity-100"
-                                    aria-label="Alle Titel von @artist.Name abspielen">
-                                <svg class="h-5 w-5 translate-x-px text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
-                            </button>
                         </div>
-                        <h2 class="mt-3 truncate text-center text-sm font-semibold text-ink">@artist.Name</h2>
-                        <p class="mt-0.5 truncate text-center text-xs text-muted">@artist.TrackCount Titel@(artist.AlbumCount > 0 ? $" · {artist.AlbumCount} Alben" : "")</p>
+                        <span class="text-right text-sm tabular-nums text-muted">@artist.AlbumCount</span>
+                        <span class="text-right text-sm tabular-nums text-muted">@artist.TrackCount</span>
+                        <svg class="h-4 w-4 text-muted transition-transform group-hover:translate-x-0.5 group-hover:text-ink" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6" /></svg>
                     </article>
                 }
             </div>
@@ -153,12 +161,6 @@
     {
         _searchText = "";
         _fileFilter = AudioFileFilter.All;
-    }
-
-    private static string Initials(string name)
-    {
-        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        return string.Concat(parts.Take(2).Select(part => char.ToUpperInvariant(part[0])));
     }
 
     public void Dispose() => Library.Changed -= OnLibraryChanged;

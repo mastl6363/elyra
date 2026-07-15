@@ -21,46 +21,25 @@ else
         .ToList();
 
     <div class="mx-auto max-w-5xl px-8 py-6">
-        <header class="flex items-end gap-5">
-            <div class="flex h-40 w-40 shrink-0 items-center justify-center overflow-hidden rounded-full bg-surface shadow-xl shadow-black/30">
-                @if (artist.CoverArtDataUri is not null)
-                {
-                    <img src="@artist.CoverArtDataUri" alt="@artist.Name" class="h-full w-full object-cover" />
-                }
-                else
-                {
-                    <span class="text-5xl font-semibold text-accent">@Initials(artist.Name)</span>
-                }
-            </div>
-            <div class="min-w-0 flex-1">
-                <div class="text-xs uppercase tracking-wide text-muted">Künstler</div>
-                <h1 class="mt-1 truncate text-4xl font-semibold tracking-tight">@artist.Name</h1>
-                <p class="mt-2 text-sm text-muted">@artist.AlbumCount Alben · @artist.TrackCount Titel</p>
-                <button @onclick="() => Playback.Play(artist.Tracks)"
-                        class="mt-4 inline-flex items-center gap-2 rounded-full bg-accent px-5 py-2.5 text-sm font-medium text-white hover:opacity-90">
-                    <svg class="h-4 w-4 translate-x-px" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
-                    Alle abspielen
-                </button>
-            </div>
+        <header class="border-b border-line pb-7">
+            <div class="text-xs uppercase tracking-wide text-accent">Künstler</div>
+            <h1 class="mt-2 truncate text-4xl font-semibold tracking-tight">@artist.Name</h1>
+            <p class="mt-2 text-sm text-muted">@artist.AlbumCount Alben · @artist.TrackCount Titel</p>
+            <button @onclick="() => Playback.Play(artist.Tracks)"
+                    class="mt-5 inline-flex items-center gap-2 rounded-full bg-accent px-5 py-2.5 text-sm font-medium text-white hover:opacity-90">
+                <svg class="h-4 w-4 translate-x-px" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+                Alle abspielen
+            </button>
         </header>
 
         @foreach (var album in artist.Albums)
         {
             <section class="mt-10">
-                <div class="mb-3 flex items-center gap-4 px-3">
-                    <div class="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-surface">
-                        @if (album.CoverArtDataUri is not null)
-                        {
-                            <img src="@album.CoverArtDataUri" alt="" class="h-full w-full object-cover" />
-                        }
-                        else
-                        {
-                            <svg class="h-6 w-6 text-line" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></svg>
-                        }
-                    </div>
+                <div class="mb-3 flex items-end gap-4 border-b border-line px-3 pb-3">
                     <div class="min-w-0 flex-1">
-                        <h2 class="truncate text-lg font-semibold">@album.Title</h2>
-                        <p class="text-xs text-muted">@album.TrackCount Titel</p>
+                        <div class="text-xs uppercase tracking-wide text-muted">Album</div>
+                        <h2 class="mt-1 truncate text-xl font-semibold">@album.Title</h2>
+                        <p class="mt-1 text-xs text-muted">@album.TrackCount Titel</p>
                     </div>
                     <button @onclick="() => Playback.Play(album.Tracks)" class="rounded-full bg-surface-2 px-4 py-2 text-sm hover:bg-line">Abspielen</button>
                 </div>
@@ -83,10 +62,4 @@ else
 
 @code {
     [Parameter] public string Id { get; set; } = "";
-
-    private static string Initials(string name)
-    {
-        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        return string.Concat(parts.Take(2).Select(part => char.ToUpperInvariant(part[0])));
-    }
 }
