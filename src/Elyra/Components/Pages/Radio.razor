@@ -1,0 +1,202 @@
+@page "/radio"
+@inject RadioBrowserService RadioBrowser
+@inject RadioFavoritesService Favorites
+@inject PlaybackService Playback
+@implements IDisposable
+
+<div class="mx-auto max-w-6xl px-8 py-6">
+    <header>
+        <div class="text-xs uppercase tracking-wide text-accent">Internet</div>
+        <h1 class="mt-1 text-3xl font-semibold tracking-tight">Radio</h1>
+        <p class="mt-1 text-sm text-muted">Freie Sender aus der öffentlichen Radio-Browser-Bibliothek.</p>
+    </header>
+
+    <div class="mt-6 flex items-center gap-2 border-b border-line pb-4">
+        <button @onclick="() => _showFavorites = false"
+                class="rounded-full px-4 py-2 text-sm @(!_showFavorites ? "bg-accent text-white" : "bg-surface text-muted hover:text-ink")">
+            Entdecken
+        </button>
+        <button @onclick="() => _showFavorites = true"
+                class="rounded-full px-4 py-2 text-sm @(_showFavorites ? "bg-accent text-white" : "bg-surface text-muted hover:text-ink")">
+            Favoriten <span class="ml-1 opacity-70">@Favorites.Favorites.Count</span>
+        </button>
+    </div>
+
+    @if (!_showFavorites)
+    {
+        <div class="mt-5 flex flex-wrap items-center gap-3">
+            <label class="relative min-w-64 flex-1">
+                <span class="sr-only">Sender oder Genre suchen</span>
+                <svg class="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+                <input @bind="_query" @bind:event="oninput" @onkeydown="OnSearchKey"
+                       placeholder="Sender oder Genre suchen"
+                       class="w-full rounded-full border border-line bg-surface py-2 pl-10 pr-4 text-sm text-ink outline-none placeholder:text-muted focus:border-accent" />
+            </label>
+            <select @bind="_countryCode"
+                    class="rounded-full border border-line bg-surface px-4 py-2 text-sm text-ink outline-none focus:border-accent">
+                @foreach (var country in Countries)
+                {
+                    <option value="@country.Code">@country.Name</option>
+                }
+            </select>
+            <button @onclick="SearchAsync" disabled="@_isLoading"
+                    class="rounded-full bg-accent px-5 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50">
+                Suchen
+            </button>
+        </div>
+
+        <div class="mt-3 flex flex-wrap gap-2">
+            @foreach (var genre in Genres)
+            {
+                <button @onclick="() => SearchGenreAsync(genre)"
+                        class="rounded-full border border-line px-3 py-1 text-xs text-muted transition hover:border-accent hover:text-ink">
+                    @genre
+                </button>
+            }
+        </div>
+    }
+
+    @if (_isLoading && !_showFavorites)
+    {
+        <div class="mt-20 flex flex-col items-center text-muted">
+            <div class="h-8 w-8 animate-spin rounded-full border-2 border-line border-t-accent"></div>
+            <p class="mt-3 text-sm">Sender werden geladen …</p>
+        </div>
+    }
+    else if (!_showFavorites && !string.IsNullOrWhiteSpace(_error))
+    {
+        <div class="mt-12 rounded-xl border border-line bg-surface p-6 text-center">
+            <h2 class="font-medium">Radio-Bibliothek nicht erreichbar</h2>
+            <p class="mt-1 text-sm text-muted">@_error</p>
+            <button @onclick="SearchAsync" class="mt-4 text-sm text-accent hover:underline">Erneut versuchen</button>
+        </div>
+    }
+    else if (VisibleStations.Count == 0)
+    {
+        <div class="mt-20 text-center text-muted">
+            <h2 class="font-medium text-ink">@(_showFavorites ? "Noch keine Favoriten" : "Keine Sender gefunden")</h2>
+            <p class="mt-1 text-sm">@(_showFavorites ? "Markiere Sender mit dem Herz, um sie hier zu speichern." : "Probiere einen anderen Namen, ein Genre oder Land.")</p>
+        </div>
+    }
+    else
+    {
+        <div class="mt-6 overflow-hidden rounded-xl border border-line bg-surface/40">
+            @foreach (var station in VisibleStations)
+            {
+                var isCurrent = Playback.CurrentStation?.StationUuid == station.StationUuid;
+                var isFavorite = Favorites.Contains(station.StationUuid);
+                <article class="group flex items-center gap-4 border-b border-line/70 px-4 py-3 last:border-b-0 hover:bg-surface-2 @(isCurrent ? "bg-surface-2" : "")">
+                    <button @onclick="() => PlayAsync(station)"
+                            class="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-surface-2 text-muted transition hover:bg-accent hover:text-white"
+                            aria-label="@station.Name abspielen">
+                        @if (RadioStation.IsHttpUrl(station.Favicon))
+                        {
+                            <img src="@station.Favicon" alt="" class="h-full w-full object-cover" />
+                        }
+                        else
+                        {
+                            <svg class="h-4 w-4 translate-x-px" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+                        }
+                    </button>
+
+                    <div class="min-w-0 flex-1">
+                        <button @onclick="() => PlayAsync(station)" class="block max-w-full truncate text-left text-sm font-medium @(isCurrent ? "text-accent" : "text-ink")">@station.Name</button>
+                        <div class="mt-0.5 truncate text-xs text-muted">@station.Details</div>
+                    </div>
+
+                    <div class="hidden min-w-0 max-w-72 flex-1 gap-1 lg:flex">
+                        @foreach (var tag in station.TagList)
+                        {
+                            <span class="truncate rounded-full bg-surface-2 px-2 py-1 text-xs text-muted">@tag</span>
+                        }
+                    </div>
+
+                    <button @onclick="() => Favorites.Toggle(station)"
+                            class="shrink-0 p-2 transition-colors @(isFavorite ? "text-accent" : "text-muted hover:text-ink")"
+                            aria-label="@(isFavorite ? "Aus Favoriten entfernen" : "Zu Favoriten hinzufügen")" title="Favorit">
+                        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="@(isFavorite ? "currentColor" : "none")" stroke="currentColor" stroke-width="2"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z" /></svg>
+                    </button>
+                </article>
+            }
+        </div>
+        @if (!_showFavorites)
+        {
+            <p class="mt-3 text-xs text-muted">@VisibleStations.Count Sender · Verzeichnis: Radio Browser</p>
+        }
+    }
+</div>
+
+@code {
+    private readonly CancellationTokenSource _cancellation = new();
+    private IReadOnlyList<RadioStation> _stations = [];
+    private string _query = "";
+    private string _countryCode = "DE";
+    private string? _error;
+    private bool _isLoading;
+    private bool _showFavorites;
+
+    private static readonly (string Code, string Name)[] Countries =
+    [
+        ("", "Alle Länder"), ("DE", "Deutschland"), ("AT", "Österreich"),
+        ("CH", "Schweiz"), ("FR", "Frankreich"), ("GB", "Großbritannien"),
+        ("US", "USA"), ("NL", "Niederlande"), ("IT", "Italien"), ("ES", "Spanien")
+    ];
+
+    private static readonly string[] Genres = ["Pop", "Rock", "Jazz", "Klassik", "Nachrichten", "Elektro", "Oldies"];
+    private IReadOnlyList<RadioStation> VisibleStations => _showFavorites ? Favorites.Favorites : _stations;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Favorites.Changed += OnFavoritesChanged;
+        Playback.CurrentChanged += OnPlaybackChanged;
+        await SearchAsync();
+    }
+
+    private async Task SearchAsync()
+    {
+        _isLoading = true;
+        _error = null;
+        try
+        {
+            _stations = await RadioBrowser.SearchAsync(_query, _countryCode, _cancellation.Token);
+        }
+        catch (OperationCanceledException) when (_cancellation.IsCancellationRequested) { }
+        catch (Exception exception)
+        {
+            _error = exception.Message;
+            _stations = [];
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task SearchGenreAsync(string genre)
+    {
+        _query = genre;
+        await SearchAsync();
+    }
+
+    private async Task PlayAsync(RadioStation station)
+    {
+        Playback.PlayRadio(station);
+        await RadioBrowser.RecordClickAsync(station.StationUuid, _cancellation.Token);
+    }
+
+    private async Task OnSearchKey(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter") await SearchAsync();
+    }
+
+    private void OnFavoritesChanged(object? sender, EventArgs args) => InvokeAsync(StateHasChanged);
+    private void OnPlaybackChanged(object? sender, EventArgs args) => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        Favorites.Changed -= OnFavoritesChanged;
+        Playback.CurrentChanged -= OnPlaybackChanged;
+        _cancellation.Cancel();
+        _cancellation.Dispose();
+    }
+}

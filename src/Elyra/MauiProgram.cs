@@ -28,6 +28,8 @@ public static class MauiProgram
 		builder.Services.AddSingleton<MusicBrainzMetadataService>();
 		builder.Services.AddSingleton<FolderPickerService>();
 		builder.Services.AddSingleton<PlaylistService>();
+		builder.Services.AddSingleton<RadioBrowserService>();
+		builder.Services.AddSingleton<RadioFavoritesService>();
 
 #if DEBUG
 		builder.Services.AddBlazorWebViewDeveloperTools();

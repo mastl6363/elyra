@@ -5,6 +5,7 @@
 
 @{
     var current = Playback.Current;
+    var station = Playback.CurrentStation;
     var pos = Audio.Position;
     var dur = Audio.Duration;
     var hasTrack = current is not null;
@@ -19,22 +20,41 @@
             {
                 <img src="@current.CoverArtDataUri" alt="" class="h-full w-full object-cover" />
             }
+            else if (station is not null && RadioStation.IsHttpUrl(station.Favicon))
+            {
+                <img src="@station.Favicon" alt="" class="h-full w-full object-cover" />
+            }
+            else if (station is not null)
+            {
+                <div class="flex h-full w-full items-center justify-center text-accent">
+                    <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12a7 7 0 0 1 14 0v7H5z" /><path d="M9 12a3 3 0 0 1 6 0" /><circle cx="12" cy="12" r="1" /></svg>
+                </div>
+            }
         </div>
         <div class="min-w-0">
-            <div class="truncate text-sm font-medium text-ink">@(current?.Title ?? "Kein Titel")</div>
-            <div class="truncate text-xs text-muted">@(current?.Artist ?? "—")</div>
+            <div class="truncate text-sm font-medium text-ink">@(current?.Title ?? station?.Name ?? "Kein Titel")</div>
+            <div class="truncate text-xs text-muted">@(current?.Artist ?? station?.Country ?? "—")</div>
         </div>
     </button>
 
     <!-- Transport + progress -->
     <div class="flex flex-1 flex-col items-center gap-2">
         <TransportControls />
-        <div class="flex w-full max-w-xl items-center gap-2 text-xs tabular-nums text-muted">
-            <span>@Format(pos)</span>
-            <input type="range" class="elyra-range flex-1" min="0" max="@MaxSeconds(dur)" value="@((int)pos.TotalSeconds)"
-                   style="@ProgressStyle(pos, dur)" disabled="@(!hasTrack)" @onchange="OnSeek" />
-            <span>@Format(dur)</span>
-        </div>
+        @if (station is not null)
+        {
+            <div class="flex h-4 items-center gap-2 text-xs font-medium uppercase tracking-widest text-accent">
+                <span class="h-1.5 w-1.5 rounded-full bg-accent"></span> Live
+            </div>
+        }
+        else
+        {
+            <div class="flex w-full max-w-xl items-center gap-2 text-xs tabular-nums text-muted">
+                <span>@Format(pos)</span>
+                <input type="range" class="elyra-range flex-1" min="0" max="@MaxSeconds(dur)" value="@((int)pos.TotalSeconds)"
+                       style="@ProgressStyle(pos, dur)" disabled="@(!hasTrack)" @onchange="OnSeek" />
+                <span>@Format(dur)</span>
+            </div>
+        }
     </div>
 
     <!-- Volume -->

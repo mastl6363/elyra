@@ -57,6 +57,13 @@ public sealed class AudioPlayerService : IDisposable
         _player.Play(media);
     }
 
+    /// <summary>Loads and starts an HTTP(S) radio stream.</summary>
+    public void PlayLocation(string url)
+    {
+        using var media = new Media(_libVLC, url, FromType.FromLocation);
+        _player.Play(media);
+    }
+
     public void Pause()
     {
         if (_player.CanPause)
