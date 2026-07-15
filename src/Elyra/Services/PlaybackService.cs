@@ -24,7 +24,8 @@ public sealed class PlaybackService
     public int CurrentIndex => _order.CurrentIndex;
     public Track? Current => CurrentIndex >= 0 && CurrentIndex < _queue.Count ? _queue[CurrentIndex] : null;
     public RadioStation? CurrentStation { get; private set; }
-    public bool HasCurrent => Current is not null || CurrentStation is not null;
+    public VideoItem? CurrentVideo { get; private set; }
+    public bool HasCurrent => Current is not null || CurrentStation is not null || CurrentVideo is not null;
     public bool ShuffleEnabled => _order.ShuffleEnabled;
 
     public bool IsPlaying => _audio.IsPlaying;
@@ -43,6 +44,7 @@ public sealed class PlaybackService
     public void Play(IEnumerable<Track> tracks, int startIndex = 0)
     {
         CurrentStation = null;
+        CurrentVideo = null;
         _queue = tracks.ToList();
         _order.Reset(_queue.Count, startIndex);
         if (_queue.Count == 0)
@@ -58,7 +60,26 @@ public sealed class PlaybackService
         _queue = [];
         _order.Reset(0, 0);
         CurrentStation = station;
+        CurrentVideo = null;
         _audio.PlayLocation(station.StreamUrl);
+        CurrentChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void PlayVideo(VideoItem video)
+    {
+        _queue = [];
+        _order.Reset(0, 0);
+        CurrentStation = null;
+        CurrentVideo = video;
+        _audio.PlayVideo(video);
+        CurrentChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void StopVideo()
+    {
+        if (CurrentVideo is null) return;
+        _audio.Stop();
+        CurrentVideo = null;
         CurrentChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -83,7 +104,7 @@ public sealed class PlaybackService
 
     public void Next()
     {
-        if (CurrentStation is not null) return;
+        if (CurrentStation is not null || CurrentVideo is not null) return;
         if (_order.TryMoveNext(out _))
             StartCurrentTrack();
         else
@@ -92,7 +113,7 @@ public sealed class PlaybackService
 
     public void Previous()
     {
-        if (CurrentStation is not null) return;
+        if (CurrentStation is not null || CurrentVideo is not null) return;
         // Restart the current track if we're more than 3s in (or it's the first one),
         // otherwise step back to the previous track.
         if (_audio.Position.TotalSeconds > 3)

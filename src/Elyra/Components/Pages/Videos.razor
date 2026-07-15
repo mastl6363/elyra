@@ -1,0 +1,151 @@
+@page "/videos"
+@inject VideoLibraryService Library
+@inject VideoPlaybackService VideoPlayback
+@implements IDisposable
+
+<div class="mx-auto max-w-6xl px-8 py-6">
+    <header class="flex items-end justify-between gap-4">
+        <div>
+            <div class="text-xs uppercase tracking-wide text-accent">Video</div>
+            <h1 class="mt-1 text-3xl font-semibold tracking-tight">Filme</h1>
+            <p class="mt-1 text-sm text-muted">Lokale Filmdateien und DVDs mit VLC wiedergeben.</p>
+        </div>
+        <button @onclick="AddMoviesAsync" disabled="@_isPicking"
+                class="rounded-full bg-accent px-5 py-2.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50">
+            Filme hinzufügen
+        </button>
+    </header>
+
+    @if (!string.IsNullOrWhiteSpace(_message))
+    {
+        <div class="mt-5 rounded-lg border border-line bg-surface px-4 py-3 text-sm text-muted">@_message</div>
+    }
+
+    @if (OperatingSystem.IsWindows())
+    {
+        <section class="mt-8">
+            <div class="mb-3 flex items-end justify-between border-b border-line px-3 pb-3">
+                <div>
+                    <h2 class="text-lg font-semibold">DVD</h2>
+                    <p class="mt-1 text-xs text-muted">Optische Laufwerke und DVD-Menüs</p>
+                </div>
+                <button @onclick="RefreshDrives" class="text-xs text-accent hover:underline">Laufwerke aktualisieren</button>
+            </div>
+
+            @if (!VlcRuntime.HasDvdSupport)
+            {
+                <div class="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200">
+                    Für DVD-Wiedergabe wird eine lokale VLC-3-Laufzeit mit DVD-Modulen benötigt. Filmdateien funktionieren weiterhin.
+                </div>
+            }
+            else if (_dvdDrives.Count == 0)
+            {
+                <p class="px-3 py-4 text-sm text-muted">Kein DVD-Laufwerk gefunden.</p>
+            }
+            else
+            {
+                <div class="overflow-hidden rounded-xl border border-line bg-surface/40">
+                    @foreach (var dvd in _dvdDrives)
+                    {
+                        <article class="flex items-center gap-4 border-b border-line/70 px-4 py-3 last:border-b-0 hover:bg-surface-2">
+                            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-surface-2 text-accent">
+                                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="2" /></svg>
+                            </div>
+                            <div class="min-w-0 flex-1">
+                                <div class="truncate text-sm font-medium">@dvd.Title</div>
+                                <div class="mt-0.5 text-xs text-muted">@(dvd.IsAvailable ? $"Disc in {dvd.Source}" : "Keine Disc eingelegt")</div>
+                            </div>
+                            <button @onclick="() => PlayAsync(dvd)" disabled="@(!dvd.IsAvailable)"
+                                    class="rounded-full bg-accent px-4 py-2 text-sm text-white hover:opacity-90 disabled:opacity-40">
+                                DVD öffnen
+                            </button>
+                        </article>
+                    }
+                </div>
+            }
+        </section>
+    }
+
+    <section class="mt-10">
+        <div class="mb-3 border-b border-line px-3 pb-3">
+            <h2 class="text-lg font-semibold">Gespeicherte Filme</h2>
+            <p class="mt-1 text-xs text-muted">@Library.Videos.Count Filme · Wiedergabepositionen werden automatisch gespeichert</p>
+        </div>
+
+        @if (Library.Videos.Count == 0)
+        {
+            <div class="mt-14 flex flex-col items-center text-center text-muted">
+                <svg class="h-12 w-12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m10 9 5 3-5 3z" /></svg>
+                <h3 class="mt-4 font-medium text-ink">Noch keine Filme</h3>
+                <p class="mt-1 text-sm">Füge MP4-, MKV-, AVI-, MOV- oder andere Videodateien hinzu.</p>
+            </div>
+        }
+        else
+        {
+            <div class="overflow-hidden rounded-xl border border-line bg-surface/40">
+                @foreach (var movie in Library.Videos.OrderBy(video => video.Title, StringComparer.CurrentCultureIgnoreCase))
+                {
+                    <article class="group flex items-center gap-4 border-b border-line/70 px-4 py-3 last:border-b-0 hover:bg-surface-2">
+                        <button @onclick="() => PlayAsync(movie)" class="flex h-10 w-10 items-center justify-center rounded-lg bg-surface-2 text-muted hover:bg-accent hover:text-white" aria-label="@movie.Title abspielen">
+                            <svg class="h-4 w-4 translate-x-px" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+                        </button>
+                        <div class="min-w-0 flex-1">
+                            <button @onclick="() => PlayAsync(movie)" class="block max-w-full truncate text-left text-sm font-medium text-ink hover:text-accent">@movie.Title</button>
+                            <div class="mt-0.5 truncate text-xs text-muted">@movie.FileName</div>
+                        </div>
+                        @if (movie.SavedPosition > TimeSpan.FromSeconds(5))
+                        {
+                            <span class="text-xs tabular-nums text-muted">Weiter bei @Format(movie.SavedPosition)</span>
+                        }
+                        <button @onclick="() => Library.Remove(movie.Id)" class="p-2 text-muted opacity-0 hover:text-ink group-hover:opacity-100" aria-label="Entfernen" title="Aus Mediathek entfernen">
+                            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                        </button>
+                    </article>
+                }
+            </div>
+        }
+    </section>
+</div>
+
+@code {
+    private IReadOnlyList<VideoItem> _dvdDrives = [];
+    private bool _isPicking;
+    private string? _message;
+
+    protected override void OnInitialized()
+    {
+        Library.Changed += OnChanged;
+        RefreshDrives();
+    }
+
+    private async Task AddMoviesAsync()
+    {
+        _isPicking = true;
+        _message = null;
+        try
+        {
+            var count = await Library.PickAndAddAsync();
+            if (count > 0) _message = $"{count} Film{(count == 1 ? "" : "e")} hinzugefügt.";
+        }
+        catch (Exception exception)
+        {
+            _message = $"Filme konnten nicht ausgewählt werden: {exception.Message}";
+        }
+        finally
+        {
+            _isPicking = false;
+        }
+    }
+
+    private async Task PlayAsync(VideoItem video)
+    {
+        _message = null;
+        try { await VideoPlayback.OpenAsync(video); }
+        catch (Exception exception) { _message = $"Video konnte nicht geöffnet werden: {exception.Message}"; }
+    }
+
+    private void RefreshDrives() => _dvdDrives = Library.GetDvdDrives();
+    private void OnChanged(object? sender, EventArgs args) => InvokeAsync(StateHasChanged);
+    private static string Format(TimeSpan value) => value.TotalHours >= 1 ? value.ToString(@"h\:mm\:ss") : value.ToString(@"m\:ss");
+    public void Dispose() => Library.Changed -= OnChanged;
+}

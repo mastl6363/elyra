@@ -1,3 +1,4 @@
+using Elyra.Models;
 using LibVLCSharp.Shared;
 
 namespace Elyra.Services;
@@ -36,6 +37,7 @@ public sealed class AudioPlayerService : IDisposable
     public event EventHandler? TrackEnded;
 
     public bool IsPlaying => _player.IsPlaying;
+    public MediaPlayer MediaPlayer => _player;
 
     /// <summary>Current playback position.</summary>
     public TimeSpan Position => TimeSpan.FromMilliseconds(_player.Time < 0 ? 0 : _player.Time);
@@ -62,6 +64,14 @@ public sealed class AudioPlayerService : IDisposable
     {
         using var media = new Media(_libVLC, url, FromType.FromLocation);
         _player.Play(media);
+    }
+
+    public void PlayVideo(VideoItem video)
+    {
+        if (video.Kind == VideoSourceKind.Dvd)
+            PlayLocation(video.PlaybackLocation);
+        else
+            Play(video.Source);
     }
 
     public void Pause()

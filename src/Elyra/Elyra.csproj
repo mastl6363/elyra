@@ -65,6 +65,7 @@
 
     <ItemGroup>
         <PackageReference Include="LibVLCSharp" Version="3.9.7.1" />
+        <PackageReference Include="LibVLCSharp.MAUI" Version="3.9.7.1" />
         <PackageReference Include="Microsoft.Maui.Controls" Version="$(MauiVersion)" />
         <PackageReference Include="Microsoft.AspNetCore.Components.WebView.Maui" Version="$(MauiVersion)" />
         <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.0" />
