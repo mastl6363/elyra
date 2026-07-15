@@ -9,6 +9,7 @@ namespace Elyra.Services;
 public sealed class PlaybackService
 {
     private readonly AudioPlayerService _audio;
+    private readonly PlaybackOrder _order = new();
     private List<Track> _queue = new();
 
     public PlaybackService(AudioPlayerService audio)
@@ -20,8 +21,9 @@ public sealed class PlaybackService
     }
 
     public IReadOnlyList<Track> Queue => _queue;
-    public int CurrentIndex { get; private set; } = -1;
+    public int CurrentIndex => _order.CurrentIndex;
     public Track? Current => CurrentIndex >= 0 && CurrentIndex < _queue.Count ? _queue[CurrentIndex] : null;
+    public bool ShuffleEnabled => _order.ShuffleEnabled;
 
     public bool IsPlaying => _audio.IsPlaying;
     public TimeSpan Position => _audio.Position;
@@ -39,20 +41,25 @@ public sealed class PlaybackService
     public void Play(IEnumerable<Track> tracks, int startIndex = 0)
     {
         _queue = tracks.ToList();
+        _order.Reset(_queue.Count, startIndex);
         if (_queue.Count == 0)
         {
-            CurrentIndex = -1;
             CurrentChanged?.Invoke(this, EventArgs.Empty);
             return;
         }
-        PlayAt(Math.Clamp(startIndex, 0, _queue.Count - 1));
+        StartCurrentTrack();
     }
 
-    public void PlayAt(int index)
+    private void StartCurrentTrack()
     {
-        if (index < 0 || index >= _queue.Count) return;
-        CurrentIndex = index;
-        _audio.Play(_queue[index].FilePath);
+        if (CurrentIndex < 0 || CurrentIndex >= _queue.Count) return;
+        _audio.Play(_queue[CurrentIndex].FilePath);
+        CurrentChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void ToggleShuffle()
+    {
+        _order.ToggleShuffle();
         CurrentChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -64,8 +71,8 @@ public sealed class PlaybackService
 
     public void Next()
     {
-        if (CurrentIndex + 1 < _queue.Count)
-            PlayAt(CurrentIndex + 1);
+        if (_order.TryMoveNext(out _))
+            StartCurrentTrack();
         else
             _audio.Stop();
     }
@@ -74,10 +81,12 @@ public sealed class PlaybackService
     {
         // Restart the current track if we're more than 3s in (or it's the first one),
         // otherwise step back to the previous track.
-        if (_audio.Position.TotalSeconds > 3 || CurrentIndex <= 0)
+        if (_audio.Position.TotalSeconds > 3)
             _audio.Seek(TimeSpan.Zero);
+        else if (_order.TryMovePrevious(out _))
+            StartCurrentTrack();
         else
-            PlayAt(CurrentIndex - 1);
+            _audio.Seek(TimeSpan.Zero);
     }
 
     public void Seek(TimeSpan position) => _audio.Seek(position);

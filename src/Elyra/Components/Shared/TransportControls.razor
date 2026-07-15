@@ -10,6 +10,14 @@
 }
 
 <div class="flex items-center @(Large ? "gap-8" : "gap-5")">
+    <button @onclick="Playback.ToggleShuffle" disabled="@(!hasTrack)"
+            class="transition-colors disabled:opacity-40 @(Playback.ShuffleEnabled ? "text-accent" : "text-muted hover:text-ink")"
+            aria-label="Zufallswiedergabe" aria-pressed="@Playback.ShuffleEnabled" title="Zufallswiedergabe">
+        <svg class="@sideIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M16 3h5v5" /><path d="m4 20 17-17" /><path d="M21 16v5h-5" /><path d="m15 15 6 6" /><path d="M4 4l5 5" />
+        </svg>
+    </button>
+
     <button @onclick="Playback.Previous" disabled="@(!hasTrack)"
             class="text-muted transition-colors hover:text-ink disabled:opacity-40" aria-label="Zurück">
         <svg class="@sideIcon" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h2v14H6zM20 5v14l-11-7z" /></svg>

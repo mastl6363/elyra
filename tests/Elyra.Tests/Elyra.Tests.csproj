@@ -10,6 +10,8 @@
     <EnableMauiFontProcessing>false</EnableMauiFontProcessing>
     <EnableMauiImageProcessing>false</EnableMauiImageProcessing>
     <EnableMauiSplashScreenProcessing>false</EnableMauiSplashScreenProcessing>
+    <!-- Unit tests run as a normal test host, not as the deployed MSIX app. -->
+    <WindowsAppSdkAutoInitialize>false</WindowsAppSdkAutoInitialize>
   </PropertyGroup>
 
   <ItemGroup>
@@ -24,7 +26,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Elyra\Elyra.csproj" />
+    <ProjectReference Include="..\..\src\Elyra\Elyra.csproj"
+                      AdditionalProperties="WindowsPackageType=None;WindowsAppSdkAutoInitialize=false;WindowsAppSdkDeploymentManagerInitialize=false;WindowsAppSdkBootstrapInitialize=false" />
   </ItemGroup>
 
 </Project>
