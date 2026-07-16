@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/Elyra/Elyra.csproj">
       <Configuration Solution="*|*" Project="*|*|Deploy" />
+      <Deploy />
     </Project>
   </Folder>
   <Folder Name="/tests/">
