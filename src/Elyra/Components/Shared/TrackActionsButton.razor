@@ -1,0 +1,29 @@
+@inject PlaybackService Playback
+
+<div class="relative">
+    <button @onclick="Toggle" @onclick:stopPropagation
+            class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-surface-2 hover:text-ink"
+            title="Weitere Aktionen" aria-label="Weitere Aktionen">
+        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+            <circle cx="5" cy="12" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="19" cy="12" r="1.5" />
+        </svg>
+    </button>
+
+    @if (_open)
+    {
+        <div class="fixed inset-0 z-10" @onclick="Close"></div>
+        <div class="absolute right-0 z-20 mt-2 w-52 overflow-hidden rounded-lg border border-line bg-surface-2 py-1 shadow-xl" @onclick:stopPropagation>
+            <button @onclick="PlayNext" class="block w-full px-3 py-2 text-left text-sm text-ink hover:bg-surface">Als Nächstes</button>
+            <button @onclick="AddToQueue" class="block w-full px-3 py-2 text-left text-sm text-ink hover:bg-surface">Zur Warteschlange</button>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public Track Track { get; set; } = default!;
+    private bool _open;
+    private void Toggle() => _open = !_open;
+    private void Close() => _open = false;
+    private void PlayNext() { Playback.PlayNext(Track); Close(); }
+    private void AddToQueue() { Playback.AddToQueue(Track); Close(); }
+}

@@ -1,0 +1,22 @@
+@inject UserMusicDataService UserMusic
+@implements IDisposable
+
+<button @onclick="Toggle" @onclick:stopPropagation
+        class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors @(IsFavorite ? "text-accent" : "text-muted hover:text-ink")"
+        title="@(IsFavorite ? "Aus Lieblingssongs entfernen" : "Zu Lieblingssongs hinzufügen")"
+        aria-label="@(IsFavorite ? "Aus Lieblingssongs entfernen" : "Zu Lieblingssongs hinzufügen")"
+        aria-pressed="@IsFavorite">
+    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="@(IsFavorite ? "currentColor" : "none")" stroke="currentColor" stroke-width="2">
+        <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z" />
+    </svg>
+</button>
+
+@code {
+    [Parameter, EditorRequired] public Track Track { get; set; } = default!;
+    private bool IsFavorite => UserMusic.IsFavorite(Track);
+
+    protected override void OnInitialized() => UserMusic.Changed += OnChanged;
+    private void Toggle() => UserMusic.ToggleFavorite(Track);
+    private void OnChanged(object? sender, EventArgs args) => InvokeAsync(StateHasChanged);
+    public void Dispose() => UserMusic.Changed -= OnChanged;
+}

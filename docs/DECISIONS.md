@@ -2,6 +2,46 @@
 
 Kurzes Log der weichenstellenden Entscheidungen. Neueste oben.
 
+## 2026-07-30 — Windows-Mediensteuerung und Wiedergabefehler
+
+- **SMTC wird manuell an LibVLC gekoppelt.** Da Elyra nicht den Windows-
+  `MediaPlayer` verwendet, verbindet ein Windows-spezifischer Dienst die
+  vorhandene Queue über `ISystemMediaTransportControlsInterop` mit
+  Hardwaretasten, Medienoverlay, Metadaten, Cover und Zeitleiste.
+- **Plattformcode bleibt hinter einer gemeinsamen Schnittstelle.** Windows
+  registriert die native Implementierung; Android und iOS erhalten bis zu ihrer
+  jeweiligen Media-Session-Integration einen No-op-Dienst.
+- **Musikfehler blockieren die Queue nicht.** Fehlende oder von LibVLC nicht
+  lesbare lokale Titel werden mit sichtbarem Hinweis übersprungen. Radio- und
+  Videofehler behalten den Wiedergabekontext und bieten einen erneuten Versuch.
+
+## 2026-07-30 — Übergänge und Lautstärke
+
+- **Eine LibVLC-Instanz, zwei Audio-Player.** Der zweite Player lädt den nächsten
+  lokalen Titel vor. Crossfade überblendet beide Player; „lückenlos“ verwendet
+  denselben Pfad mit einem sehr kurzen Übergang. Radio und Video bleiben davon
+  getrennt.
+- **Übergänge sind Queue-gesteuert.** Shuffle, Repeat und manuelle Queue-Änderungen
+  bestimmen weiterhin eindeutig den nächsten Titel. Manuelle Navigation,
+  Pausieren und Suchen brechen einen laufenden Übergang ab.
+- **Normalisierung ist eine Startoption.** Der VLC-Normalizer wird beim Erzeugen
+  der nativen Engine aktiviert. Eine Änderung der Einstellung wirkt deshalb
+  bewusst erst nach dem nächsten App-Start.
+
+## 2026-07-30 — Persistenter Spotify-artiger Hörkontext
+
+- **Queue ist eigener Anwendungszustand.** Titel können als Nächstes oder am Ende
+  eingereiht, umsortiert, entfernt und gemeinsam geleert werden. Shuffle und die
+  Repeat-Modi Aus/Alle/Eins bleiben unabhängig davon im Playback-Dienst.
+- **Wiederaufnahme startet nicht ungefragt.** Queue, aktueller Titel,
+  Wiedergabeposition, Lautstärke, Shuffle und Repeat werden lokal gespeichert,
+  aber nach einem App-Neustart erst durch eine Nutzeraktion fortgesetzt.
+- **Favoriten und Verlauf bleiben lokal.** Lieblingssongs, letzte Wiedergaben und
+  Wiedergabezähler liegen in einer separaten JSON-Datei in AppData. Gespeichert
+  werden kompakte Track-Snapshots ohne Coverdaten.
+- **Audio-Engine erhält eine testbare Grenze.** `IAudioPlayerService` trennt die
+  Queue-/Sitzungslogik von LibVLCSharp und ermöglicht deterministische Unit-Tests.
+
 ## 2026-07-15 — Künstlerzentrierte Mediathek
 
 - **Primäre Navigation: Künstler statt Album.** Unvollständige MP3-Tags erzeugen

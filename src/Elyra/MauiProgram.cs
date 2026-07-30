@@ -23,8 +23,18 @@ public static class MauiProgram
 		builder.Services.AddMauiBlazorWebView();
 
 		// App services
+		builder.Services.AddSingleton<PlaybackPreferencesService>();
 		builder.Services.AddSingleton<AudioPlayerService>();
+		builder.Services.AddSingleton<IAudioPlayerService>(services =>
+			services.GetRequiredService<AudioPlayerService>());
+		builder.Services.AddSingleton<PlaybackSessionStore>();
+		builder.Services.AddSingleton<UserMusicDataService>();
 		builder.Services.AddSingleton<PlaybackService>();
+#if WINDOWS
+		builder.Services.AddSingleton<ISystemMediaTransportService, WindowsSystemMediaTransportService>();
+#else
+		builder.Services.AddSingleton<ISystemMediaTransportService, NoOpSystemMediaTransportService>();
+#endif
 		builder.Services.AddSingleton<ILibraryStateStore, JsonLibraryStateStore>();
 		builder.Services.AddSingleton<MusicLibraryService>();
 		builder.Services.AddSingleton<MusicBrainzMetadataService>();

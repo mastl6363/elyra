@@ -26,8 +26,45 @@ public sealed class PlaybackOrder
 
     public void ToggleShuffle()
     {
-        ShuffleEnabled = !ShuffleEnabled;
+        SetShuffle(!ShuffleEnabled);
+    }
+
+    public void SetShuffle(bool enabled)
+    {
+        if (ShuffleEnabled == enabled)
+            return;
+        ShuffleEnabled = enabled;
         RebuildShuffleOrder();
+    }
+
+    /// <summary>Makes an explicitly inserted queue item the next shuffled item.</summary>
+    public void PrioritizeNext(int index)
+    {
+        if (!ShuffleEnabled || index < 0 || index >= _count)
+            return;
+
+        _shuffleOrder.Remove(index);
+        _shuffleOrder.Insert(Math.Min(_shufflePosition + 1, _shuffleOrder.Count), index);
+    }
+
+    public IReadOnlyList<int> UpcomingIndices() => ShuffleEnabled
+        ? _shuffleOrder.Skip(_shufflePosition + 1).ToList()
+        : Enumerable.Range(Math.Max(0, CurrentIndex + 1), Math.Max(0, _count - CurrentIndex - 1)).ToList();
+
+    public bool TryPeekNext(out int index)
+    {
+        if (ShuffleEnabled)
+        {
+            if (_shufflePosition + 1 >= _shuffleOrder.Count)
+                return NoIndex(out index);
+            index = _shuffleOrder[_shufflePosition + 1];
+            return true;
+        }
+
+        if (CurrentIndex + 1 >= _count)
+            return NoIndex(out index);
+        index = CurrentIndex + 1;
+        return true;
     }
 
     public bool TryMoveNext(out int index)

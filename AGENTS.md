@@ -34,7 +34,8 @@ Wiedergabelisten (JSON in AppData), persistente Mediathek-Snapshots, Suche nach
 Album/Künstler/Titel, MP3-/FLAC-Filter und Einstellungen für Bibliothek und
 Wiedergabe sowie manueller MusicBrainz-Abgleich für fehlende Albumdaten.
 Automatisierte Tests decken Filter-, Persistenz-, Metadaten- und
-Bibliothekslogik ab. Offen: Android/iOS-Tests.
+Bibliothekslogik ab. Windows integriert Hardware-Medientasten, System-Medienoverlay,
+Metadaten/Cover/Zeitleiste und robuste Fehlerbehandlung. Offen: Android/iOS-Tests.
 
 ## Plattform-Ziel
 

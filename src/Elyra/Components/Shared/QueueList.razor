@@ -1,0 +1,64 @@
+@inject PlaybackService Playback
+@implements IDisposable
+
+<section>
+    <div class="mb-2 flex items-center justify-between px-3">
+        <div>
+            <h2 class="text-xs font-medium uppercase tracking-wide text-muted">Als Nächstes</h2>
+            @if (Playback.ShuffleEnabled)
+            {
+                <p class="mt-1 text-xs text-muted">Zufällige Reihenfolge</p>
+            }
+        </div>
+        @if (Playback.UpcomingQueue.Count > 0)
+        {
+            <button @onclick="Playback.ClearUpcoming" class="text-xs text-muted hover:text-ink">Leeren</button>
+        }
+    </div>
+
+    @if (Playback.UpcomingQueue.Count == 0)
+    {
+        <p class="rounded-lg border border-line bg-surface/40 px-4 py-5 text-center text-sm text-muted">Keine weiteren Titel in der Warteschlange.</p>
+    }
+    else
+    {
+        <div class="overflow-hidden rounded-xl border border-line bg-surface/40">
+            @for (var position = 0; position < Playback.UpcomingQueue.Count; position++)
+            {
+                var item = Playback.UpcomingQueue[position];
+                var first = position == 0;
+                var last = position == Playback.UpcomingQueue.Count - 1;
+                <article class="group flex items-center gap-3 border-b border-line/70 px-3 py-2 last:border-b-0 hover:bg-surface-2">
+                    <button @onclick="() => Play(item)" class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted hover:bg-accent hover:text-white" aria-label="@item.Track.Title abspielen">
+                        <svg class="h-4 w-4 translate-x-px" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+                    </button>
+                    <div class="min-w-0 flex-1">
+                        <div class="truncate text-sm text-ink">@item.Track.Title</div>
+                        <div class="truncate text-xs text-muted">@item.Track.Artist</div>
+                    </div>
+                    <span class="text-xs tabular-nums text-muted">@item.Track.DurationLabel</span>
+                    <div class="flex items-center opacity-0 transition-opacity group-hover:opacity-100">
+                        <button @onclick="() => Playback.MoveQueueItem(item.QueueIndex, -1)" disabled="@(Playback.ShuffleEnabled || first)"
+                                class="p-1 text-muted hover:text-ink disabled:opacity-25" aria-label="Nach oben">↑</button>
+                        <button @onclick="() => Playback.MoveQueueItem(item.QueueIndex, 1)" disabled="@(Playback.ShuffleEnabled || last)"
+                                class="p-1 text-muted hover:text-ink disabled:opacity-25" aria-label="Nach unten">↓</button>
+                        <button @onclick="() => Playback.RemoveQueueItem(item.QueueIndex)"
+                                class="p-1 text-muted hover:text-red-400" aria-label="Aus Warteschlange entfernen">×</button>
+                    </div>
+                </article>
+            }
+        </div>
+    }
+</section>
+
+@code {
+    protected override void OnInitialized() => Playback.CurrentChanged += OnChanged;
+    private void OnChanged(object? sender, EventArgs args) => InvokeAsync(StateHasChanged);
+
+    private void Play(PlaybackQueueItem item)
+    {
+        Playback.Play(Playback.Queue, item.QueueIndex);
+    }
+
+    public void Dispose() => Playback.CurrentChanged -= OnChanged;
+}

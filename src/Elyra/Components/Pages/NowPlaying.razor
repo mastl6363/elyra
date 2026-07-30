@@ -61,10 +61,10 @@
             <p class="mt-1 text-sm text-muted">Die Wiedergabe läuft im nativen Videofenster.</p>
 
             <div class="mt-6 flex w-full max-w-md items-center gap-2 text-xs tabular-nums text-muted">
-                <span>@Format(Audio.Position)</span>
+                <span>@Format(Playback.Position)</span>
                 <input type="range" class="elyra-range flex-1" min="0" max="@MaxSeconds" value="@CurrentSeconds"
                        style="@ProgressStyle" @onchange="OnSeek" />
-                <span>@Format(Audio.Duration)</span>
+                <span>@Format(Playback.Duration)</span>
             </div>
 
             <div class="mt-6"><TransportControls Large="true" /></div>
@@ -88,14 +88,23 @@
                 }
             </div>
 
-            <h1 class="mt-6 max-w-xl truncate text-2xl font-semibold tracking-tight">@current.Title</h1>
+            <div class="mt-6 flex items-center gap-2">
+                <h1 class="max-w-xl truncate text-2xl font-semibold tracking-tight">@current.Title</h1>
+                <FavoriteButton Track="current" />
+            </div>
             <p class="mt-1 text-sm text-muted">@current.Artist · @current.Album</p>
+            @if (Playback.HasRestoredSession)
+            {
+                <button @onclick="Playback.ResumeLastSession" class="mt-4 rounded-full bg-accent px-5 py-2 text-sm font-medium text-white hover:opacity-90">
+                    Bei @Format(Playback.Position) fortsetzen
+                </button>
+            }
 
             <div class="mt-6 flex w-full max-w-md items-center gap-2 text-xs tabular-nums text-muted">
-                <span>@Format(Audio.Position)</span>
+                <span>@Format(Playback.Position)</span>
                 <input type="range" class="elyra-range flex-1" min="0" max="@MaxSeconds" value="@CurrentSeconds"
                        style="@ProgressStyle" @onchange="OnSeek" />
-                <span>@Format(Audio.Duration)</span>
+                <span>@Format(Playback.Duration)</span>
             </div>
 
             <div class="mt-6">
@@ -103,13 +112,9 @@
             </div>
         </div>
 
-        @if (Playback.Queue.Count > 0)
-        {
-            <div class="mx-auto mt-12 max-w-2xl">
-                <h2 class="mb-2 px-3 text-xs font-medium uppercase tracking-wide text-muted">Als Nächstes</h2>
-                <TrackList Tracks="Playback.Queue" ShowAdd="true" />
-            </div>
-        }
+        <div class="mx-auto mt-12 max-w-2xl">
+            <QueueList />
+        </div>
     }
 </div>
 
@@ -124,8 +129,8 @@
     private void OnChanged(object? sender, EventArgs e) => InvokeAsync(StateHasChanged);
     private void OnPosition(object? sender, TimeSpan t) => InvokeAsync(StateHasChanged);
 
-    private int MaxSeconds => Math.Max(1, (int)Audio.Duration.TotalSeconds);
-    private int CurrentSeconds => (int)Audio.Position.TotalSeconds;
+    private int MaxSeconds => Math.Max(1, (int)Playback.Duration.TotalSeconds);
+    private int CurrentSeconds => (int)Playback.Position.TotalSeconds;
 
     private void OnSeek(ChangeEventArgs e)
     {
@@ -137,8 +142,8 @@
     {
         get
         {
-            var d = Audio.Duration.TotalMilliseconds;
-            var pct = d > 0 ? Audio.Position.TotalMilliseconds / d * 100 : 0;
+            var d = Playback.Duration.TotalMilliseconds;
+            var pct = d > 0 ? Playback.Position.TotalMilliseconds / d * 100 : 0;
             var p = pct.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
             return $"background:linear-gradient(to right, var(--color-accent) {p}%, var(--color-surface-2) {p}%)";
         }
