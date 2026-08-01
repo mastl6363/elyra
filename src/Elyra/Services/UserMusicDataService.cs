@@ -6,7 +6,9 @@ namespace Elyra.Services;
 /// <summary>Persists favorites, listening history and play counts locally.</summary>
 public sealed class UserMusicDataService
 {
-    private const int MaximumHistoryEntries = 100;
+    // Keep enough unique tracks for smart playlists to distinguish genuinely
+    // unplayed music even in large local collections.
+    private const int MaximumHistoryEntries = 5_000;
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
     private readonly string _filePath;
     private readonly HashSet<string> _favorites = new(StringComparer.OrdinalIgnoreCase);

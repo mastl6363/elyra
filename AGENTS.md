@@ -13,7 +13,7 @@ einer nativen Cross-Platform-App. Start als Donationware, später optionales Saa
 | Kern-Logik     | C# / .NET                           |
 | Audio-Engine   | **LibVLCSharp** (FLAC + MP3, gapless) |
 | Metadaten/ID3  | TagLib# (TagLibSharp)               |
-| Lokaler Cache  | SQLite (ab Phase 2)                 |
+| Lokaler Cache  | SQLite                             |
 
 ## Architektur
 
@@ -26,13 +26,20 @@ HTML triggert direkt native C#-Audio-/Datei-Funktionen. Keine Browser-Sandbox.
 **Phase 1 (MVP) — in Entwicklung.** Projekt ist gescaffoldet (`src/Elyra`,
 .NET 10, MAUI Blazor Hybrid), Solution `Elyra.slnx`. Integriert: Tailwind (npm,
 v4), LibVLCSharp + native Binaries pro Plattform, TagLib#. Funktionsfähig auf
-Windows: Ordner-Import, Metadaten-/Cover-Auslesen, künstlerzentrierte Mediathek
-mit Künstlerdetail, optionalen Albumgruppen und vollständigen Songlisten,
-Album-Detail, Wiedergabe mit Player-Leiste (Play/Pause/Next/Prev/
+Windows: Ordner-Import, Metadaten-/Cover-/Genre-Auslesen, vollständige
+Song-, Künstler- und Albenansichten mit kombinierbarer Suche, Filtern,
+Sortierung und zustandserhaltender Detailnavigation, Künstlerdetail,
+optionalen Albumgruppen, Album-Detail, Wiedergabe mit Player-Leiste (Play/Pause/Next/Prev/
 Seek/Lautstärke, Auto-Advance), Now-Playing-Ansicht mit Queue, persistente
-Wiedergabelisten (JSON in AppData), persistente Mediathek-Snapshots, Suche nach
+Wiedergabelisten (JSON in AppData), SQLite-Mediathekindex, Metadateneditor mit
+Mehrfachauswahl, automatische Ordnerüberwachung, intelligente Wiedergabelisten,
+Bibliotheksprüfung auf fehlende Dateien und mögliche Dubletten, Suche nach
 Album/Künstler/Titel, MP3-/FLAC-Filter und Einstellungen für Bibliothek und
 Wiedergabe sowie manueller MusicBrainz-Abgleich für fehlende Albumdaten.
+Songtexte werden aus eingebetteten Tags und synchronisierten LRC-Dateien
+angezeigt. Ein persistenter LibVLC-Equalizer bietet Presets, Vorverstärkung und
+manuelle Frequenzbänder. Der Mini-Player reduziert die Oberfläche auf Titel,
+Transport und Zeitleiste; unter Windows bleibt das kompakte Fenster im Vordergrund.
 Automatisierte Tests decken Filter-, Persistenz-, Metadaten- und
 Bibliothekslogik ab. Windows integriert Hardware-Medientasten, System-Medienoverlay,
 Metadaten/Cover/Zeitleiste und robuste Fehlerbehandlung. Offen: Android/iOS-Tests.
@@ -64,6 +71,7 @@ MSBuild-Target `TailwindBuild`.
 
 1. **Phase 1 — MVP / Solo-Player:** Setup, UI-Komponenten (Player, Playlist-Grid,
    Settings), lokale MP3/FLAC lesen, Cover extrahieren, flüssig abspielen.
-2. **Phase 2 — BYOS:** Google Drive / WebDAV (NAS) anbinden, SQLite-Metadaten-Cache.
+2. **Phase 2 — BYOS:** Google Drive / WebDAV (NAS) anbinden und den vorhandenen
+   SQLite-Metadatenindex dafür erweitern.
 3. **Phase 3 — SaaS-Backend:** ASP.NET Core / Spring Boot, Stripe, isolierter
    Cloud-Speicher (S3), Docker-Deployment.

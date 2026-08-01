@@ -11,6 +11,33 @@ public sealed class PlaybackServiceTests : IDisposable
     private string PreferencesPath => Path.Combine(_directory, "preferences.json");
 
     [Fact]
+    public void Duration_FallsBackToTrackMetadataUntilEngineReportsLength()
+    {
+        var audio = new FakeAudioPlayer();
+        audio.SetDuration(TimeSpan.Zero);
+        var service = CreateService(audio);
+        var track = Track("Timed");
+
+        service.Play([track]);
+
+        Assert.Equal(track.Duration, service.Duration);
+    }
+
+    [Fact]
+    public void TogglePlayPause_ExposesTheResultingPlaybackState()
+    {
+        var audio = new FakeAudioPlayer();
+        var service = CreateService(audio);
+        service.Play([Track("Toggle")]);
+
+        service.TogglePlayPause();
+        Assert.False(service.IsPlaying);
+
+        service.TogglePlayPause();
+        Assert.True(service.IsPlaying);
+    }
+
+    [Fact]
     public void Queue_CanInsertMoveRemoveAndClearUpcomingTracks()
     {
         var audio = new FakeAudioPlayer();
@@ -269,10 +296,24 @@ public sealed class PlaybackServiceTests : IDisposable
 
         public void CancelTransition() { }
 
+        public void Pause()
+        {
+            IsPlaying = false;
+            StateChanged?.Invoke(this, EventArgs.Empty);
+        }
+
+        public void Resume()
+        {
+            IsPlaying = true;
+            StateChanged?.Invoke(this, EventArgs.Empty);
+        }
+
         public void TogglePlayPause()
         {
-            IsPlaying = !IsPlaying;
-            StateChanged?.Invoke(this, EventArgs.Empty);
+            if (IsPlaying)
+                Pause();
+            else
+                Resume();
         }
 
         public void Stop()
@@ -295,5 +336,7 @@ public sealed class PlaybackServiceTests : IDisposable
             Position = position;
             PositionChanged?.Invoke(this, position);
         }
+
+        public void SetDuration(TimeSpan duration) => Duration = duration;
     }
 }

@@ -4,18 +4,25 @@ namespace Elyra.Services;
 
 /// <summary>
 /// Scans a folder for local audio files and reads their tags via TagLib#.
-/// Phase 1 keeps the whole library in memory; Phase 2 will cache it in SQLite.
+/// The active library stays in memory while SQLite provides the durable local index.
 /// Registered as a singleton.
 /// </summary>
-public sealed class MusicLibraryService
+public sealed class MusicLibraryService : IDisposable
 {
+    private const int CurrentMetadataVersion = 3;
     private readonly ILibraryStateStore _stateStore;
+    private readonly SemaphoreSlim _libraryGate = new(1, 1);
+    private readonly object _watcherSync = new();
+    private FileSystemWatcher? _watcher;
+    private Timer? _watcherTimer;
+    private bool _disposed;
     private static readonly HashSet<string> SupportedExtensions =
         new(StringComparer.OrdinalIgnoreCase) { ".mp3", ".flac" };
 
     public IReadOnlyList<Track> Tracks { get; private set; } = Array.Empty<Track>();
     public string? FolderPath { get; private set; }
     public bool IsScanning { get; private set; }
+    public bool IsWatching => _watcher?.EnableRaisingEvents == true;
 
     public MusicLibraryService(ILibraryStateStore stateStore)
     {
@@ -23,6 +30,7 @@ public sealed class MusicLibraryService
         var state = _stateStore.Load();
         if (state is not null)
         {
+            var requiresMetadataRefresh = state.MetadataVersion < CurrentMetadataVersion;
             FolderPath = state.FolderPath;
             var normalizedTracks = state.Tracks.Select(NormalizeLegacyTrack).ToList();
             Tracks = normalizedTracks;
@@ -31,6 +39,15 @@ public sealed class MusicLibraryService
             {
                 PersistState();
             }
+
+            if (requiresMetadataRefresh
+                && !string.IsNullOrWhiteSpace(FolderPath)
+                && Directory.Exists(FolderPath))
+            {
+                _ = RefreshLegacyMetadataAsync(FolderPath);
+            }
+
+            ConfigureWatcher();
         }
     }
 
@@ -88,6 +105,14 @@ public sealed class MusicLibraryService
 
     public Artist? FindArtist(string id) => Artists.FirstOrDefault(a => a.Id == id);
 
+    public string GetArtistId(string artistName) =>
+        StableId($"artist\0{artistName.Trim()}");
+
+    public string? GetAlbumId(Track track) =>
+        string.IsNullOrWhiteSpace(track.Album)
+            ? null
+            : StableId($"album\0{track.AlbumKey}");
+
     private static string StableId(string value) =>
         Convert.ToHexString(System.Security.Cryptography.MD5.HashData(
             System.Text.Encoding.UTF8.GetBytes(value)));
@@ -95,18 +120,27 @@ public sealed class MusicLibraryService
     /// <summary>Scans <paramref name="folderPath"/> recursively and replaces the library.</summary>
     public async Task ImportFolderAsync(string folderPath)
     {
-        IsScanning = true;
-        Changed?.Invoke(this, EventArgs.Empty);
+        await _libraryGate.WaitAsync();
         try
         {
-            Tracks = await Task.Run(() => ScanFolder(folderPath));
-            FolderPath = folderPath;
-            PersistState();
+            IsScanning = true;
+            Changed?.Invoke(this, EventArgs.Empty);
+            try
+            {
+                Tracks = await Task.Run(() => ScanFolder(folderPath));
+                FolderPath = folderPath;
+                PersistState();
+                ConfigureWatcher();
+            }
+            finally
+            {
+                IsScanning = false;
+                Changed?.Invoke(this, EventArgs.Empty);
+            }
         }
         finally
         {
-            IsScanning = false;
-            Changed?.Invoke(this, EventArgs.Empty);
+            _libraryGate.Release();
         }
     }
 
@@ -114,12 +148,102 @@ public sealed class MusicLibraryService
         ? Task.CompletedTask
         : ImportFolderAsync(FolderPath);
 
+    private async Task RefreshLegacyMetadataAsync(string folderPath)
+    {
+        try
+        {
+            await ImportFolderAsync(folderPath);
+        }
+        catch
+        {
+            // Keep the restored snapshot when a previously available folder
+            // disappears or becomes inaccessible during the one-time upgrade.
+        }
+    }
+
     public void Clear()
     {
+        DisposeWatcher();
         Tracks = Array.Empty<Track>();
         FolderPath = null;
         _stateStore.Clear();
         Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void RemoveMissingFiles()
+    {
+        var existing = Tracks.Where(track => File.Exists(track.FilePath)).ToList();
+        if (existing.Count == Tracks.Count)
+            return;
+
+        Tracks = existing;
+        PersistState();
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    public async Task<TrackMetadataEditResult> UpdateTrackMetadataAsync(
+        IEnumerable<string> filePaths,
+        TrackMetadataChanges changes)
+    {
+        var selectedPaths = filePaths
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (selectedPaths.Count == 0)
+            return new TrackMetadataEditResult(0, []);
+
+        await _libraryGate.WaitAsync();
+        try
+        {
+            var result = await Task.Run(() =>
+            {
+                var updated = new Dictionary<string, Track>(StringComparer.OrdinalIgnoreCase);
+                var failed = new List<string>();
+
+                foreach (var path in selectedPaths)
+                {
+                    try
+                    {
+                        using (var file = TagLib.File.Create(path))
+                        {
+                            if (changes.ChangeTitle) file.Tag.Title = changes.Title.Trim();
+                            if (changes.ChangeArtist) file.Tag.Performers = [changes.Artist.Trim()];
+                            if (changes.ChangeAlbum) file.Tag.Album = changes.Album.Trim();
+                            if (changes.ChangeGenre)
+                            {
+                                file.Tag.Genres = string.IsNullOrWhiteSpace(changes.Genre)
+                                    ? []
+                                    : [changes.Genre.Trim()];
+                            }
+                            if (changes.ChangeYear) file.Tag.Year = changes.Year;
+                            file.Save();
+                        }
+
+                        updated[path] = ReadTrack(path);
+                    }
+                    catch
+                    {
+                        failed.Add(path);
+                    }
+                }
+
+                return (Updated: updated, Failed: failed);
+            });
+
+            if (result.Updated.Count > 0)
+            {
+                Tracks = Tracks.Select(track =>
+                    result.Updated.TryGetValue(track.FilePath, out var updated) ? updated : track).ToList();
+                PersistState();
+                Changed?.Invoke(this, EventArgs.Empty);
+            }
+
+            return new TrackMetadataEditResult(result.Updated.Count, result.Failed);
+        }
+        finally
+        {
+            _libraryGate.Release();
+        }
     }
 
     public int ApplyMetadataUpdates(IEnumerable<TrackMetadataUpdate> updates)
@@ -204,6 +328,8 @@ public sealed class MusicLibraryService
             Artist = string.IsNullOrWhiteSpace(tag.FirstPerformer) ? "Unbekannter Künstler" : tag.FirstPerformer,
             Album = tag.Album?.Trim() ?? string.Empty,
             AlbumArtist = tag.FirstAlbumArtist ?? string.Empty,
+            Genre = tag.FirstGenre?.Trim() ?? string.Empty,
+            Year = tag.Year,
             TrackNumber = tag.Track,
             DiscNumber = tag.Disc,
             Duration = tfile.Properties?.Duration ?? TimeSpan.Zero,
@@ -228,6 +354,8 @@ public sealed class MusicLibraryService
             Artist = track.Artist,
             Album = album,
             AlbumArtist = albumArtist,
+            Genre = track.Genre,
+            Year = track.Year,
             TrackNumber = track.TrackNumber,
             DiscNumber = track.DiscNumber,
             Duration = track.Duration,
@@ -237,7 +365,101 @@ public sealed class MusicLibraryService
 
     private void PersistState() => _stateStore.Save(new LibraryState
     {
+        MetadataVersion = CurrentMetadataVersion,
         FolderPath = FolderPath,
         Tracks = Tracks.ToList()
     });
+
+    private void ConfigureWatcher()
+    {
+        DisposeWatcher();
+        if (string.IsNullOrWhiteSpace(FolderPath) || !Directory.Exists(FolderPath))
+            return;
+
+        try
+        {
+            _watcher = new FileSystemWatcher(FolderPath)
+            {
+                IncludeSubdirectories = true,
+                Filter = "*.*",
+                NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size
+            };
+            _watcher.Created += OnWatchedFileChanged;
+            _watcher.Changed += OnWatchedFileChanged;
+            _watcher.Deleted += OnWatchedFileChanged;
+            _watcher.Renamed += OnWatchedFileRenamed;
+            _watcher.Error += OnWatcherError;
+            _watcher.EnableRaisingEvents = true;
+        }
+        catch
+        {
+            DisposeWatcher();
+        }
+    }
+
+    private void OnWatchedFileChanged(object sender, FileSystemEventArgs args)
+    {
+        if (SupportedExtensions.Contains(Path.GetExtension(args.FullPath)))
+            ScheduleWatchedRefresh();
+    }
+
+    private void OnWatchedFileRenamed(object sender, RenamedEventArgs args)
+    {
+        if (SupportedExtensions.Contains(Path.GetExtension(args.FullPath))
+            || SupportedExtensions.Contains(Path.GetExtension(args.OldFullPath)))
+            ScheduleWatchedRefresh();
+    }
+
+    private void OnWatcherError(object sender, ErrorEventArgs args) => ScheduleWatchedRefresh();
+
+    private void ScheduleWatchedRefresh()
+    {
+        lock (_watcherSync)
+        {
+            _watcherTimer?.Dispose();
+            _watcherTimer = new Timer(
+                _ => _ = RefreshFromWatcherAsync(),
+                null,
+                TimeSpan.FromMilliseconds(1200),
+                Timeout.InfiniteTimeSpan);
+        }
+    }
+
+    private async Task RefreshFromWatcherAsync()
+    {
+        try
+        {
+            var folder = FolderPath;
+            if (!_disposed && !string.IsNullOrWhiteSpace(folder) && Directory.Exists(folder))
+                await ImportFolderAsync(folder);
+        }
+        catch
+        {
+            // A removable source may disappear between the watcher event and scan.
+        }
+    }
+
+    private void DisposeWatcher()
+    {
+        lock (_watcherSync)
+        {
+            _watcherTimer?.Dispose();
+            _watcherTimer = null;
+            if (_watcher is not null)
+            {
+                _watcher.EnableRaisingEvents = false;
+                _watcher.Dispose();
+                _watcher = null;
+            }
+        }
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+            return;
+        _disposed = true;
+        DisposeWatcher();
+        _libraryGate.Dispose();
+    }
 }

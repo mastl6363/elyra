@@ -27,8 +27,9 @@
 
     <button @onclick="Playback.TogglePlayPause" disabled="@(!hasMedia)"
             class="flex @playButton items-center justify-center rounded-full bg-ink text-canvas transition-transform hover:scale-105 disabled:opacity-40"
-            aria-label="@(Audio.IsPlaying ? "Pause" : "Abspielen")">
-        @if (Audio.IsPlaying)
+            aria-label="@(Playback.IsPlaying ? "Pause" : "Abspielen")"
+            title="@(Playback.IsPlaying ? "Pause" : "Abspielen")">
+        @if (Playback.IsPlaying)
         {
             <svg class="@playIcon" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z" /></svg>
         }

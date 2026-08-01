@@ -1,4 +1,5 @@
 using Elyra.Services;
+using Elyra.Models;
 
 namespace Elyra.Tests;
 
@@ -39,6 +40,28 @@ public sealed class PlaybackPreferencesServiceTests : IDisposable
         preferences.CrossfadeSeconds = 0;
         preferences.GaplessEnabled = false;
         Assert.Equal(0, preferences.TransitionSeconds);
+    }
+
+    [Fact]
+    public void Equalizer_IsClampedCopiedPersistedAndRestored()
+    {
+        var preferences = new PlaybackPreferencesService(PreferencesPath);
+        var settings = new EqualizerPreferences
+        {
+            Enabled = true,
+            PresetIndex = -1,
+            Preamp = 99,
+            Bands = [-99, 0, 99]
+        };
+
+        preferences.UpdateEqualizer(settings);
+        settings.Bands[0] = 8;
+
+        var restored = new PlaybackPreferencesService(PreferencesPath).Equalizer;
+        Assert.True(restored.Enabled);
+        Assert.Equal(-1, restored.PresetIndex);
+        Assert.Equal(20, restored.Preamp);
+        Assert.Equal([-20, 0, 20], restored.Bands);
     }
 
     public void Dispose()

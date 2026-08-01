@@ -62,6 +62,59 @@ public sealed class LibraryFilterTests
         Assert.Equal("Daft Punk", Assert.Single(LibraryFilter.Apply(artists, null, AudioFileFilter.Mp3)).Name);
     }
 
+    [Fact]
+    public void Apply_TracksCombinesArtistGenreFormatAndSearch()
+    {
+        var tracks = new[]
+        {
+            Track("One More Time", "Daft Punk", "Discovery", "dance.mp3", "Electronic"),
+            Track("Aerodynamic", "Daft Punk", "Discovery", "dance.flac", "Electronic"),
+            Track("So What", "Miles Davis", "Kind of Blue", "jazz.mp3", "Jazz")
+        };
+
+        var result = LibraryFilter.Apply(
+            tracks,
+            "aero",
+            AudioFileFilter.Flac,
+            "Daft Punk",
+            "Electronic");
+
+        Assert.Equal("Aerodynamic", Assert.Single(result).Title);
+    }
+
+    [Fact]
+    public void Apply_TracksCanSelectMissingGenre()
+    {
+        var tracks = new[]
+        {
+            Track("Tagged", "Artist", "", "tagged.mp3", "Rock"),
+            Track("Untagged", "Artist", "", "untagged.mp3")
+        };
+
+        var result = LibraryFilter.Apply(
+            tracks,
+            null,
+            AudioFileFilter.All,
+            genreFilter: LibraryBrowseState.MissingGenreFilter);
+
+        Assert.Equal("Untagged", Assert.Single(result).Title);
+    }
+
+    [Fact]
+    public void Sort_TracksSortsByArtistAndUsesTitleAsStableFallback()
+    {
+        var tracks = new[]
+        {
+            Track("Beta", "Artist B", "", "b.mp3"),
+            Track("Zulu", "Artist A", "", "z.mp3"),
+            Track("Alpha", "Artist A", "", "a.mp3")
+        };
+
+        var result = LibraryFilter.Sort(tracks, TrackSortOrder.Artist, false);
+
+        Assert.Equal(["Alpha", "Zulu", "Beta"], result.Select(track => track.Title));
+    }
+
     private static Album Album(string title, string artist, params Track[] tracks) => new()
     {
         Id = title,
@@ -78,12 +131,18 @@ public sealed class LibraryFilterTests
         Albums = []
     };
 
-    private static Track Track(string title, string artist, string album, string filePath) => new()
+    private static Track Track(
+        string title,
+        string artist,
+        string album,
+        string filePath,
+        string genre = "") => new()
     {
         FilePath = filePath,
         Title = title,
         Artist = artist,
         Album = album,
+        Genre = genre,
         Duration = TimeSpan.FromMinutes(3)
     };
 }

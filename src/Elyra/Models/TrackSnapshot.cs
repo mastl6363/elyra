@@ -11,6 +11,8 @@ public sealed class TrackSnapshot
     public string Artist { get; set; } = "";
     public string Album { get; set; } = "";
     public string AlbumArtist { get; set; } = "";
+    public string Genre { get; set; } = "";
+    public uint Year { get; set; }
     public uint TrackNumber { get; set; }
     public uint DiscNumber { get; set; }
     public long DurationMs { get; set; }
@@ -22,6 +24,8 @@ public sealed class TrackSnapshot
         Artist = track.Artist,
         Album = track.Album,
         AlbumArtist = track.AlbumArtist,
+        Genre = track.Genre,
+        Year = track.Year,
         TrackNumber = track.TrackNumber,
         DiscNumber = track.DiscNumber,
         DurationMs = (long)track.Duration.TotalMilliseconds
@@ -34,6 +38,8 @@ public sealed class TrackSnapshot
         Artist = Artist,
         Album = Album,
         AlbumArtist = AlbumArtist,
+        Genre = Genre,
+        Year = Year,
         TrackNumber = TrackNumber,
         DiscNumber = DiscNumber,
         Duration = TimeSpan.FromMilliseconds(Math.Max(0, DurationMs))

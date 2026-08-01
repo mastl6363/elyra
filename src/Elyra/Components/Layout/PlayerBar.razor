@@ -1,6 +1,7 @@
 @inject PlaybackService Playback
 @inject AudioPlayerService Audio
 @inject NavigationManager Nav
+@inject MiniPlayerService MiniPlayer
 @implements IDisposable
 
 @{
@@ -82,16 +83,19 @@
         else
         {
             <div class="flex w-full max-w-xl items-center gap-2 text-xs tabular-nums text-muted">
-                <span>@Format(pos)</span>
+                <span class="w-11 text-right" title="Abgelaufen">@PlaybackTimeFormatter.FormatElapsed(pos)</span>
                 <input type="range" class="elyra-range flex-1" min="0" max="@MaxSeconds(dur)" value="@((int)pos.TotalSeconds)"
                        style="@ProgressStyle(pos, dur)" disabled="@(!hasTrack)" @onchange="OnSeek" />
-                <span>@Format(dur)</span>
+                <span class="w-11" title="Verbleibend">@PlaybackTimeFormatter.FormatRemaining(pos, dur)</span>
             </div>
         }
     </div>
 
     <!-- Volume -->
     <div class="flex w-64 items-center justify-end gap-2 text-muted">
+        <button @onclick="MiniPlayer.Enter" class="mr-2 rounded-md p-1.5 hover:bg-surface-2 hover:text-ink" aria-label="Mini-Player" title="Mini-Player">
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M13 14h5v2h-5z" /></svg>
+        </button>
         <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M11 5 6 9H2v6h4l5 4z" /><path d="M15.5 8.5a5 5 0 0 1 0 7" /><path d="M19 5a9 9 0 0 1 0 14" />
         </svg>
@@ -102,15 +106,35 @@
 </div>
 
 @code {
+    private readonly CancellationTokenSource _refreshCancellation = new();
+
     protected override void OnInitialized()
     {
         Playback.CurrentChanged += OnChanged;
         Audio.StateChanged += OnChanged;
         Audio.PositionChanged += OnPosition;
+        _ = RefreshProgressAsync(_refreshCancellation.Token);
     }
 
     private void OnChanged(object? sender, EventArgs e) => InvokeAsync(StateHasChanged);
     private void OnPosition(object? sender, TimeSpan t) => InvokeAsync(StateHasChanged);
+
+    private async Task RefreshProgressAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(250));
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                if (Playback.IsPlaying)
+                    await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Component was removed; the refresh loop ends normally.
+        }
+    }
 
     private void OnSeek(ChangeEventArgs e)
     {
@@ -125,9 +149,6 @@
     }
 
     private static int MaxSeconds(TimeSpan dur) => Math.Max(1, (int)dur.TotalSeconds);
-
-    private static string Format(TimeSpan t) =>
-        t.TotalHours >= 1 ? t.ToString(@"h\:mm\:ss") : t.ToString(@"m\:ss");
 
     private static string Fill(double pct)
     {
@@ -146,8 +167,10 @@
 
     public void Dispose()
     {
+        _refreshCancellation.Cancel();
         Playback.CurrentChanged -= OnChanged;
         Audio.StateChanged -= OnChanged;
         Audio.PositionChanged -= OnPosition;
+        _refreshCancellation.Dispose();
     }
 }

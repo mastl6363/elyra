@@ -24,10 +24,12 @@ public static class MauiProgram
 
 		// App services
 		builder.Services.AddSingleton<PlaybackPreferencesService>();
+		builder.Services.AddSingleton<EqualizerService>();
 		builder.Services.AddSingleton<AudioPlayerService>();
 		builder.Services.AddSingleton<IAudioPlayerService>(services =>
 			services.GetRequiredService<AudioPlayerService>());
 		builder.Services.AddSingleton<PlaybackSessionStore>();
+		builder.Services.AddSingleton<MiniPlayerService>();
 		builder.Services.AddSingleton<UserMusicDataService>();
 		builder.Services.AddSingleton<PlaybackService>();
 #if WINDOWS
@@ -35,8 +37,12 @@ public static class MauiProgram
 #else
 		builder.Services.AddSingleton<ISystemMediaTransportService, NoOpSystemMediaTransportService>();
 #endif
-		builder.Services.AddSingleton<ILibraryStateStore, JsonLibraryStateStore>();
+		builder.Services.AddSingleton<ILibraryStateStore, SqliteLibraryStateStore>();
 		builder.Services.AddSingleton<MusicLibraryService>();
+		builder.Services.AddSingleton<LibraryBrowseState>();
+		builder.Services.AddSingleton<SmartPlaylistService>();
+		builder.Services.AddSingleton<LibraryHealthService>();
+		builder.Services.AddSingleton<LyricsService>();
 		builder.Services.AddSingleton<MusicBrainzMetadataService>();
 		builder.Services.AddSingleton<FolderPickerService>();
 		builder.Services.AddSingleton<PlaylistService>();

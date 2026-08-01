@@ -11,17 +11,20 @@ public sealed class AudioPlayerService : IAudioPlayerService, IDisposable
 {
     private readonly LibVLC _libVLC;
     private readonly MediaPlayer[] _players;
+    private readonly EqualizerService _equalizer;
     private readonly string[] _sources = ["", ""];
     private readonly object _transitionSync = new();
     private CancellationTokenSource? _transitionCancellation;
     private int _activeIndex;
     private int _masterVolume = 100;
     private long _pendingStartPositionMs = -1;
+    private int _isPlaying;
     private volatile bool _transitionActive;
     private bool _disposed;
 
-    public AudioPlayerService(PlaybackPreferencesService preferences)
+    public AudioPlayerService(PlaybackPreferencesService preferences, EqualizerService equalizer)
     {
+        _equalizer = equalizer;
         // The normalizer is a LibVLC start-up filter. Changing the preference
         // therefore deliberately takes effect on the next application start.
         _libVLC = preferences.NormalizeVolume
@@ -32,12 +35,13 @@ public sealed class AudioPlayerService : IAudioPlayerService, IDisposable
         foreach (var player in _players)
         {
             player.Playing += OnPlaying;
-            player.Paused += OnStateChanged;
-            player.Stopped += OnStateChanged;
+            player.Paused += OnPaused;
+            player.Stopped += OnStopped;
             player.EndReached += OnEndReached;
             player.EncounteredError += OnEncounteredError;
             player.TimeChanged += OnTimeChanged;
         }
+        _equalizer.AttachPlayers(_players);
     }
 
     public event EventHandler? StateChanged;
@@ -46,7 +50,7 @@ public sealed class AudioPlayerService : IAudioPlayerService, IDisposable
     public event EventHandler<PlaybackFailedEventArgs>? PlaybackFailed;
 
     private MediaPlayer ActivePlayer => _players[_activeIndex];
-    public bool IsPlaying => ActivePlayer.IsPlaying;
+    public bool IsPlaying => Volatile.Read(ref _isPlaying) == 1;
 
     /// <summary>
     /// The video view is permanently bound to the primary player. PlayVideo
@@ -155,6 +159,7 @@ public sealed class AudioPlayerService : IAudioPlayerService, IDisposable
             }
 
             _activeIndex = targetIndex;
+            Volatile.Write(ref _isPlaying, 1);
             target.Volume = _masterVolume;
             source.Stop();
             StateChanged?.Invoke(this, EventArgs.Empty);
@@ -204,15 +209,26 @@ public sealed class AudioPlayerService : IAudioPlayerService, IDisposable
     {
         CancelTransition();
         if (ActivePlayer.CanPause)
+        {
+            Volatile.Write(ref _isPlaying, 0);
             ActivePlayer.SetPause(true);
+            StateChanged?.Invoke(this, EventArgs.Empty);
+        }
     }
 
-    public void Resume() => ActivePlayer.SetPause(false);
+    public void Resume()
+    {
+        Volatile.Write(ref _isPlaying, 1);
+        ActivePlayer.SetPause(false);
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
 
     public void TogglePlayPause()
     {
-        CancelTransition();
-        ActivePlayer.Pause();
+        if (IsPlaying)
+            Pause();
+        else
+            Resume();
     }
 
     public void Stop()
@@ -255,6 +271,8 @@ public sealed class AudioPlayerService : IAudioPlayerService, IDisposable
         if (!IsActiveSender(sender))
             return;
 
+        Volatile.Write(ref _isPlaying, 1);
+
         var position = Interlocked.Exchange(ref _pendingStartPositionMs, -1);
         if (position >= 0)
         {
@@ -265,15 +283,27 @@ public sealed class AudioPlayerService : IAudioPlayerService, IDisposable
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    private void OnStateChanged(object? sender, EventArgs args)
+    private void OnPaused(object? sender, EventArgs args) => SetNotPlaying(sender);
+
+    private void OnStopped(object? sender, EventArgs args) => SetNotPlaying(sender);
+
+    private void SetNotPlaying(object? sender)
     {
-        if (IsActiveSender(sender))
-            StateChanged?.Invoke(this, EventArgs.Empty);
+        if (!IsActiveSender(sender))
+            return;
+
+        Volatile.Write(ref _isPlaying, 0);
+        StateChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void OnEndReached(object? sender, EventArgs args)
     {
-        if (IsActiveSender(sender) && !_transitionActive)
+        if (!IsActiveSender(sender))
+            return;
+
+        Volatile.Write(ref _isPlaying, 0);
+        StateChanged?.Invoke(this, EventArgs.Empty);
+        if (!_transitionActive)
             TrackEnded?.Invoke(this, EventArgs.Empty);
     }
 
@@ -281,6 +311,9 @@ public sealed class AudioPlayerService : IAudioPlayerService, IDisposable
     {
         if (!IsActiveSender(sender))
             return;
+
+        Volatile.Write(ref _isPlaying, 0);
+        StateChanged?.Invoke(this, EventArgs.Empty);
 
         var index = Array.IndexOf(_players, sender);
         var source = index >= 0 ? _sources[index] : "";
@@ -299,6 +332,7 @@ public sealed class AudioPlayerService : IAudioPlayerService, IDisposable
             return;
         _disposed = true;
         CancelTransition();
+        _equalizer.DetachPlayers();
         foreach (var player in _players)
             player.Dispose();
         _libVLC.Dispose();

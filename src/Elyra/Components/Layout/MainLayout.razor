@@ -1,15 +1,30 @@
 @inherits LayoutComponentBase
+@inject MiniPlayerService MiniPlayer
+@implements IDisposable
 
-<div class="flex h-screen flex-col bg-canvas text-ink">
-    <div class="flex flex-1 overflow-hidden">
-        <aside class="w-60 shrink-0 border-r border-line bg-surface">
-            <NavMenu />
-        </aside>
+@if (MiniPlayer.IsMiniPlayer)
+{
+    <MiniPlayer />
+}
+else
+{
+    <div class="flex h-screen min-h-0 flex-col overflow-hidden bg-canvas text-ink">
+        <div class="flex min-h-0 flex-1 overflow-hidden">
+            <aside class="w-60 shrink-0 border-r border-line bg-surface">
+                <NavMenu />
+            </aside>
 
-        <main class="flex-1 overflow-y-auto">
-            @Body
-        </main>
+            <main class="min-h-0 min-w-0 flex-1 overflow-y-auto">
+                @Body
+            </main>
+        </div>
+
+        <PlayerBar />
     </div>
+}
 
-    <PlayerBar />
-</div>
+@code {
+    protected override void OnInitialized() => MiniPlayer.Changed += OnMiniPlayerChanged;
+    private void OnMiniPlayerChanged(object? sender, EventArgs args) => InvokeAsync(StateHasChanged);
+    public void Dispose() => MiniPlayer.Changed -= OnMiniPlayerChanged;
+}

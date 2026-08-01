@@ -56,6 +56,26 @@ public sealed class PlaybackPreferencesService
     public double TransitionSeconds =>
         CrossfadeSeconds > 0 ? CrossfadeSeconds : GaplessEnabled ? 0.12 : 0;
 
+    public EqualizerPreferences Equalizer => new()
+    {
+        Enabled = _preferences.Equalizer.Enabled,
+        PresetIndex = _preferences.Equalizer.PresetIndex,
+        Preamp = _preferences.Equalizer.Preamp,
+        Bands = [.. _preferences.Equalizer.Bands]
+    };
+
+    public void UpdateEqualizer(EqualizerPreferences settings)
+    {
+        _preferences.Equalizer = new EqualizerPreferences
+        {
+            Enabled = settings.Enabled,
+            PresetIndex = settings.PresetIndex,
+            Preamp = Math.Clamp(settings.Preamp, -20, 20),
+            Bands = settings.Bands.Select(value => Math.Clamp(value, -20, 20)).ToList()
+        };
+        Persist();
+    }
+
     public event EventHandler? Changed;
 
     private void Load()
@@ -65,6 +85,7 @@ public sealed class PlaybackPreferencesService
             if (!File.Exists(_filePath)) return;
             _preferences = JsonSerializer.Deserialize<PlaybackPreferences>(File.ReadAllText(_filePath)) ?? new();
             _preferences.CrossfadeSeconds = Math.Clamp(_preferences.CrossfadeSeconds, 0, 12);
+            _preferences.Equalizer ??= new EqualizerPreferences();
         }
         catch
         {

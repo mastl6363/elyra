@@ -63,7 +63,19 @@ public sealed class PlaybackService
     public TimeSpan Position => _sessionPending
         ? _restoredPosition
         : _pendingPlaybackPosition ?? _audio.Position;
-    public TimeSpan Duration => _sessionPending && Current is not null ? Current.Duration : _audio.Duration;
+    public TimeSpan Duration
+    {
+        get
+        {
+            if (_sessionPending && Current is not null)
+                return Current.Duration;
+
+            var engineDuration = _audio.Duration;
+            return engineDuration > TimeSpan.Zero
+                ? engineDuration
+                : Current?.Duration ?? TimeSpan.Zero;
+        }
+    }
 
     public int Volume
     {
@@ -260,7 +272,12 @@ public sealed class PlaybackService
         if (HasRestoredSession)
             ResumeLastSession();
         else if (HasCurrent)
-            _audio.TogglePlayPause();
+        {
+            if (_audio.IsPlaying)
+                _audio.Pause();
+            else
+                _audio.Resume();
+        }
     }
 
     public void Next()

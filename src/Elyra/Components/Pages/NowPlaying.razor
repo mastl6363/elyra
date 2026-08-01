@@ -61,10 +61,10 @@
             <p class="mt-1 text-sm text-muted">Die Wiedergabe läuft im nativen Videofenster.</p>
 
             <div class="mt-6 flex w-full max-w-md items-center gap-2 text-xs tabular-nums text-muted">
-                <span>@Format(Playback.Position)</span>
+                <span class="w-12 text-right" title="Abgelaufen">@PlaybackTimeFormatter.FormatElapsed(Playback.Position)</span>
                 <input type="range" class="elyra-range flex-1" min="0" max="@MaxSeconds" value="@CurrentSeconds"
                        style="@ProgressStyle" @onchange="OnSeek" />
-                <span>@Format(Playback.Duration)</span>
+                <span class="w-12 text-left" title="Verbleibend">@PlaybackTimeFormatter.FormatRemaining(Playback.Position, Playback.Duration)</span>
             </div>
 
             <div class="mt-6"><TransportControls Large="true" /></div>
@@ -96,20 +96,24 @@
             @if (Playback.HasRestoredSession)
             {
                 <button @onclick="Playback.ResumeLastSession" class="mt-4 rounded-full bg-accent px-5 py-2 text-sm font-medium text-white hover:opacity-90">
-                    Bei @Format(Playback.Position) fortsetzen
+                    Bei @PlaybackTimeFormatter.FormatElapsed(Playback.Position) fortsetzen
                 </button>
             }
 
             <div class="mt-6 flex w-full max-w-md items-center gap-2 text-xs tabular-nums text-muted">
-                <span>@Format(Playback.Position)</span>
+                <span class="w-12 text-right" title="Abgelaufen">@PlaybackTimeFormatter.FormatElapsed(Playback.Position)</span>
                 <input type="range" class="elyra-range flex-1" min="0" max="@MaxSeconds" value="@CurrentSeconds"
                        style="@ProgressStyle" @onchange="OnSeek" />
-                <span>@Format(Playback.Duration)</span>
+                <span class="w-12 text-left" title="Verbleibend">@PlaybackTimeFormatter.FormatRemaining(Playback.Position, Playback.Duration)</span>
             </div>
 
             <div class="mt-6">
                 <TransportControls Large="true" />
             </div>
+        </div>
+
+        <div class="mx-auto mt-10 max-w-3xl text-left">
+            <LyricsPanel Track="current" Position="Playback.Position" />
         </div>
 
         <div class="mx-auto mt-12 max-w-2xl">
@@ -119,15 +123,35 @@
 </div>
 
 @code {
+    private readonly CancellationTokenSource _refreshCancellation = new();
+
     protected override void OnInitialized()
     {
         Playback.CurrentChanged += OnChanged;
         Audio.StateChanged += OnChanged;
         Audio.PositionChanged += OnPosition;
+        _ = RefreshProgressAsync(_refreshCancellation.Token);
     }
 
     private void OnChanged(object? sender, EventArgs e) => InvokeAsync(StateHasChanged);
     private void OnPosition(object? sender, TimeSpan t) => InvokeAsync(StateHasChanged);
+
+    private async Task RefreshProgressAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(250));
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                if (Playback.IsPlaying)
+                    await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Component was removed; the refresh loop ends normally.
+        }
+    }
 
     private int MaxSeconds => Math.Max(1, (int)Playback.Duration.TotalSeconds);
     private int CurrentSeconds => (int)Playback.Position.TotalSeconds;
@@ -149,13 +173,12 @@
         }
     }
 
-    private static string Format(TimeSpan t) =>
-        t.TotalHours >= 1 ? t.ToString(@"h\:mm\:ss") : t.ToString(@"m\:ss");
-
     public void Dispose()
     {
+        _refreshCancellation.Cancel();
         Playback.CurrentChanged -= OnChanged;
         Audio.StateChanged -= OnChanged;
         Audio.PositionChanged -= OnPosition;
+        _refreshCancellation.Dispose();
     }
 }

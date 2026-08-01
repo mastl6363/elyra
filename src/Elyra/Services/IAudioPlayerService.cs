@@ -20,6 +20,8 @@ public interface IAudioPlayerService
     void PlayVideo(VideoItem video);
     Task<bool> CrossfadeToAsync(string filePath, TimeSpan duration, CancellationToken cancellationToken = default);
     void CancelTransition();
+    void Pause();
+    void Resume();
     void TogglePlayPause();
     void Stop();
     void Seek(TimeSpan position);

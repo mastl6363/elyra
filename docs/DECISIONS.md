@@ -2,6 +2,50 @@
 
 Kurzes Log der weichenstellenden Entscheidungen. Neueste oben.
 
+## 2026-08-01 — Songtexte, Equalizer und Mini-Player
+
+- **Songtexte bleiben lokal und dateinah.** Elyra liest zuerst eine gleichnamige
+  `.lrc`-Datei und danach eingebettete Lyrics-Tags. Zeitmarken werden geparst,
+  hervorgehoben und sind direkt anspringbar; ein ungeklärtes Online-Lizenzmodell wird nicht
+  durch Scraping umgangen.
+- **Der Equalizer liegt vor beiden Audio-Playern.** LibVLC-Presets,
+  Vorverstärkung und alle Frequenzbänder werden live auf Haupt- und
+  Crossfade-Player angewendet und zusammen mit den Wiedergabeeinstellungen
+  lokal gespeichert.
+- **Der Mini-Player ist ein UI-Modus desselben Fensters.** Queue und
+  Audio-Instanzen laufen ohne Übergabe weiter. Auf Windows wird das Fenster
+  verkleinert und im Vordergrund gehalten; beim Verlassen werden die vorherigen
+  Maße wiederhergestellt.
+
+## 2026-08-01 — Mediathek-Index und automatische Sammlungen
+
+- **SQLite ersetzt den JSON-Snapshot als Mediathekindex.** Beim ersten Start wird
+  der vorhandene Snapshot automatisch übernommen. Persönliche Daten wie
+  Favoriten, Hörverlauf und eigene Wiedergabelisten bleiben getrennt in JSON.
+- **Tags werden nur nach expliziter Auswahl geschrieben.** Der Metadateneditor
+  unterstützt einzelne und mehrere Titel und ändert Künstler, Album, Genre und
+  Jahr über TagLib# direkt in den Audiodateien.
+- **Der Musikordner wird entprellt überwacht.** Änderungen an MP3- und FLAC-Dateien
+  lösen nach kurzer Ruhezeit einen vollständigen, robusten Neuabgleich aus.
+- **Intelligente Wiedergabelisten sind berechnete Ansichten.** Noch ungehörte,
+  lange nicht gehörte, neue, verlustfreie und genrebezogene Listen entstehen
+  aus Mediathek und lokalem Hörverlauf und benötigen keine zweite Persistenz.
+- **Die Bibliotheksprüfung löscht nicht automatisch.** Fehlende Dateien und
+  mögliche Dubletten werden zunächst nur gemeldet; das Bereinigen fehlender
+  Einträge bleibt eine bewusste Nutzeraktion.
+
+## 2026-07-31 — Gemeinsame Mediathek-Navigation
+
+- **Songs sind die vollständige Standardansicht.** Künstler und Alben bleiben
+  eigene Perspektiven auf dieselbe gefilterte Titelmenge; Dateien ohne
+  Albumangabe verschwinden dadurch nicht aus der Mediathek.
+- **Filter greifen auf Titel-Ebene.** Freitext, Künstler, Genre und Dateiformat
+  lassen sich kombinieren. Jede Ansicht ergänzt dazu passende Sortierfelder.
+- **Der Browse-Zustand bleibt in der App-Sitzung erhalten.** Beim Öffnen eines
+  Künstlers oder Albums und anschließender Rückkehr bleiben Ansicht, Suche,
+  Filter und Sortierung bestehen. Alben merken zusätzlich, ob sie aus einer
+  Künstlerseite geöffnet wurden.
+
 ## 2026-07-30 — Windows-Mediensteuerung und Wiedergabefehler
 
 - **SMTC wird manuell an LibVLC gekoppelt.** Da Elyra nicht den Windows-
