@@ -13,6 +13,7 @@ public sealed class JsonLibraryStateStoreTests : IDisposable
         var store = CreateStore();
         var state = new LibraryState
         {
+            MetadataVersion = 2,
             FolderPath = @"C:\Music",
             Tracks =
             [
@@ -22,6 +23,7 @@ public sealed class JsonLibraryStateStoreTests : IDisposable
                     Title = "Song",
                     Artist = "Artist",
                     Album = "Album",
+                    Genre = "Electronic",
                     Duration = TimeSpan.FromSeconds(125),
                     CoverArtDataUri = "data:image/png;base64,AA=="
                 }
@@ -32,9 +34,11 @@ public sealed class JsonLibraryStateStoreTests : IDisposable
         var restored = store.Load();
 
         Assert.NotNull(restored);
+        Assert.Equal(2, restored.MetadataVersion);
         Assert.Equal(state.FolderPath, restored.FolderPath);
         var track = Assert.Single(restored.Tracks);
         Assert.Equal("Song", track.Title);
+        Assert.Equal("Electronic", track.Genre);
         Assert.Equal(TimeSpan.FromSeconds(125), track.Duration);
         Assert.Equal("data:image/png;base64,AA==", track.CoverArtDataUri);
     }

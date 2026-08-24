@@ -28,9 +28,17 @@
 
             <div class="shrink-0 text-xs tabular-nums text-muted">@track.DurationLabel</div>
 
+            @if (ShowFavorite)
+            {
+                <FavoriteButton Track="track" />
+            }
             @if (ShowAdd)
             {
                 <AddToPlaylistButton Track="track" />
+            }
+            @if (ShowQueueActions)
+            {
+                <TrackActionsButton Track="track" />
             }
             @if (ShowRemove)
             {
@@ -47,6 +55,8 @@
 @code {
     [Parameter, EditorRequired] public IReadOnlyList<Track> Tracks { get; set; } = Array.Empty<Track>();
     [Parameter] public bool ShowAdd { get; set; } = true;
+    [Parameter] public bool ShowFavorite { get; set; } = true;
+    [Parameter] public bool ShowQueueActions { get; set; } = true;
     [Parameter] public bool ShowRemove { get; set; }
     [Parameter] public EventCallback<Track> OnRemove { get; set; }
 

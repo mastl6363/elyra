@@ -1,0 +1,55 @@
+@page "/favorites"
+@inject MusicLibraryService Library
+@inject UserMusicDataService UserMusic
+@inject PlaybackService Playback
+@implements IDisposable
+
+<div class="px-8 py-7">
+    <header class="flex items-end gap-5">
+        <div class="flex h-32 w-32 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-accent to-accent-2 shadow-xl shadow-accent/20">
+            <svg class="h-12 w-12 text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z" /></svg>
+        </div>
+        <div>
+            <div class="text-xs font-medium uppercase tracking-wide text-muted">Wiedergabeliste</div>
+            <h1 class="mt-1 text-3xl font-semibold tracking-tight">Lieblingssongs</h1>
+            <p class="mt-2 text-sm text-muted">@Tracks.Count Titel</p>
+            <button @onclick="() => Playback.Play(Tracks)" disabled="@(Tracks.Count == 0)"
+                    class="mt-4 inline-flex items-center gap-2 rounded-full bg-accent px-5 py-2.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-40">
+                <svg class="h-4 w-4 translate-x-px" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+                Abspielen
+            </button>
+        </div>
+    </header>
+
+    <section class="mt-8">
+        @if (Tracks.Count == 0)
+        {
+            <div class="rounded-xl border border-line bg-surface/40 px-6 py-14 text-center">
+                <h2 class="font-medium">Noch keine Lieblingssongs</h2>
+                <p class="mt-1 text-sm text-muted">Markiere Titel in der Mediathek mit dem Herz.</p>
+            </div>
+        }
+        else
+        {
+            <div class="rounded-xl border border-line bg-surface/40 p-2">
+                <TrackList Tracks="Tracks" />
+            </div>
+        }
+    </section>
+</div>
+
+@code {
+    private IReadOnlyList<Track> Tracks => UserMusic.ResolveFavorites(Library.Tracks);
+
+    protected override void OnInitialized()
+    {
+        UserMusic.Changed += OnChanged;
+        Library.Changed += OnChanged;
+    }
+    private void OnChanged(object? sender, EventArgs args) => InvokeAsync(StateHasChanged);
+    public void Dispose()
+    {
+        UserMusic.Changed -= OnChanged;
+        Library.Changed -= OnChanged;
+    }
+}

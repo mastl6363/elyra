@@ -1,22 +1,23 @@
-@page "/"
+@page "/library"
 @inject MusicLibraryService Library
+@inject LibraryBrowseState Browse
 @inject FolderPickerService FolderPicker
 @inject PlaybackService Playback
 @inject NavigationManager Nav
 @implements IDisposable
 
 <div class="px-8 py-6">
-    <header class="flex items-end justify-between gap-4">
+    <header class="flex flex-wrap items-end justify-between gap-4">
         <div>
             <h1 class="text-2xl font-semibold tracking-tight">Mediathek</h1>
             <p class="mt-1 text-sm text-muted">
                 @if (Library.Tracks.Count > 0)
                 {
-                    @($"{Library.Artists.Count} Künstler · {Library.Albums.Count} Alben · {Library.Tracks.Count} Titel")
+                    @($"{Library.Tracks.Count} Songs · {Library.Artists.Count} Künstler · {Library.Albums.Count} Alben")
                 }
                 else
                 {
-                    @("Lokale MP3- und FLAC-Dateien, nach Künstlern geordnet.")
+                    @("Deine lokale Musik an einem Ort.")
                 }
             </p>
         </div>
@@ -33,122 +34,441 @@
             <p class="mt-4 text-sm">Sammlung wird eingelesen …</p>
         </div>
     }
-    else if (Library.Artists.Count == 0)
+    else if (Library.Tracks.Count == 0)
     {
         <div class="mt-20 flex flex-col items-center justify-center text-center">
             <div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-surface">
                 <svg class="h-7 w-7 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></svg>
             </div>
             <h2 class="mt-4 text-lg font-medium">Noch keine Musik</h2>
-            <p class="mt-1 max-w-sm text-sm text-muted">Wähle einen Ordner mit deinen Musikdateien, um deine Sammlung zu importieren.</p>
+            <p class="mt-1 max-w-sm text-sm text-muted">Wähle einen Ordner mit MP3- oder FLAC-Dateien, um deine Sammlung zu importieren.</p>
             <button @onclick="ImportAsync" class="mt-5 rounded-full bg-accent px-5 py-2.5 text-sm font-medium text-white hover:opacity-90">Ordner auswählen</button>
         </div>
     }
     else
     {
-        <div class="mt-6 flex flex-wrap items-center gap-3">
-            <label class="relative min-w-64 flex-1">
-                <span class="sr-only">Mediathek durchsuchen</span>
-                <svg class="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
-                <input @bind="_searchText" @bind:event="oninput" placeholder="Künstler, Album oder Song suchen"
-                       class="w-full rounded-full border border-line bg-surface py-2 pl-10 pr-4 text-sm text-ink outline-none placeholder:text-muted focus:border-accent" />
-            </label>
+        <nav class="mt-7 flex gap-1 border-b border-line" aria-label="Mediathek-Ansicht">
+            @foreach (var option in ViewOptions)
+            {
+                <button @onclick="() => Browse.ViewMode = option.Value"
+                        class="-mb-px border-b-2 px-4 py-3 text-sm font-medium transition-colors @(Browse.ViewMode == option.Value ? "border-accent text-ink" : "border-transparent text-muted hover:text-ink")">
+                    @option.Label
+                </button>
+            }
+        </nav>
 
-            <div class="inline-flex rounded-full bg-surface p-1 text-sm" aria-label="Dateiformat filtern">
-                @foreach (var option in FormatOptions)
-                {
-                    <button @onclick="() => _fileFilter = option.Value"
-                            class="rounded-full px-3 py-1 transition-colors @(_fileFilter == option.Value ? "bg-surface-2 text-ink" : "text-muted")">
-                        @option.Label
+        <section class="mt-5 rounded-xl border border-line bg-surface/50 p-4" aria-label="Mediathek filtern und sortieren">
+            <div class="flex flex-wrap items-center gap-3">
+                <label class="relative min-w-64 flex-[2_1_22rem]">
+                    <span class="sr-only">Mediathek durchsuchen</span>
+                    <svg class="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+                    <input @bind="Browse.SearchText" @bind:event="oninput" placeholder="Song, Künstler, Album oder Genre suchen"
+                           class="w-full rounded-lg border border-line bg-canvas py-2 pl-10 pr-4 text-sm text-ink outline-none placeholder:text-muted focus:border-accent" />
+                </label>
+
+                <label class="min-w-44 flex-1">
+                    <span class="sr-only">Nach Künstler filtern</span>
+                    <select @bind="Browse.SelectedArtist"
+                            class="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-ink outline-none focus:border-accent">
+                        <option value="">Alle Künstler</option>
+                        @foreach (var artist in ArtistOptions)
+                        {
+                            <option value="@artist">@artist</option>
+                        }
+                    </select>
+                </label>
+
+                <label class="min-w-40 flex-1">
+                    <span class="sr-only">Nach Genre filtern</span>
+                    <select @bind="Browse.SelectedGenre"
+                            class="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-ink outline-none focus:border-accent">
+                        <option value="">Alle Genres</option>
+                        @foreach (var genre in GenreOptions)
+                        {
+                            <option value="@genre">@genre</option>
+                        }
+                        @if (Library.Tracks.Any(track => string.IsNullOrWhiteSpace(track.Genre)))
+                        {
+                            <option value="@LibraryBrowseState.MissingGenreFilter">Ohne Genre</option>
+                        }
+                    </select>
+                </label>
+
+                <label class="min-w-32">
+                    <span class="sr-only">Dateiformat filtern</span>
+                    <select @bind="Browse.FileFilter"
+                            class="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-ink outline-none focus:border-accent">
+                        <option value="@AudioFileFilter.All">Alle Formate</option>
+                        <option value="@AudioFileFilter.Mp3">MP3</option>
+                        <option value="@AudioFileFilter.Flac">FLAC</option>
+                    </select>
+                </label>
+            </div>
+
+            <div class="mt-3 flex flex-wrap items-center justify-between gap-3">
+                <div class="flex items-center gap-2">
+                    <span class="text-xs uppercase tracking-wide text-muted">Sortieren</span>
+                    @if (Browse.ViewMode == LibraryViewMode.Songs)
+                    {
+                        <select @bind="Browse.TrackSort" class="rounded-lg border border-line bg-canvas px-3 py-1.5 text-sm text-ink outline-none focus:border-accent">
+                            <option value="@TrackSortOrder.Title">Titel</option>
+                            <option value="@TrackSortOrder.Artist">Künstler</option>
+                            <option value="@TrackSortOrder.Album">Album</option>
+                            <option value="@TrackSortOrder.Genre">Genre</option>
+                            <option value="@TrackSortOrder.Duration">Dauer</option>
+                        </select>
+                    }
+                    else if (Browse.ViewMode == LibraryViewMode.Artists)
+                    {
+                        <select @bind="Browse.ArtistSort" class="rounded-lg border border-line bg-canvas px-3 py-1.5 text-sm text-ink outline-none focus:border-accent">
+                            <option value="@ArtistSortOrder.Name">Künstler</option>
+                            <option value="@ArtistSortOrder.TrackCount">Titelanzahl</option>
+                            <option value="@ArtistSortOrder.AlbumCount">Albenanzahl</option>
+                        </select>
+                    }
+                    else
+                    {
+                        <select @bind="Browse.AlbumSort" class="rounded-lg border border-line bg-canvas px-3 py-1.5 text-sm text-ink outline-none focus:border-accent">
+                            <option value="@AlbumSortOrder.Title">Album</option>
+                            <option value="@AlbumSortOrder.Artist">Künstler</option>
+                            <option value="@AlbumSortOrder.TrackCount">Titelanzahl</option>
+                        </select>
+                    }
+                    <button @onclick="() => Browse.SortDescending = !Browse.SortDescending"
+                            class="flex h-8 w-8 items-center justify-center rounded-lg border border-line bg-canvas text-muted hover:text-ink"
+                            title="Sortierreihenfolge umkehren" aria-label="Sortierreihenfolge umkehren">
+                        <svg class="h-4 w-4 @(Browse.SortDescending ? "rotate-180" : "")" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14m0 0 5-5m-5 5-5-5" /></svg>
                     </button>
-                }
-            </div>
+                </div>
 
-            <div class="inline-flex rounded-full bg-surface p-1 text-sm" aria-label="Sortierung">
-                <button @onclick="() => _sortByTrackCount = false"
-                        class="rounded-full px-3 py-1 transition-colors @(_sortByTrackCount ? "text-muted" : "bg-surface-2 text-ink")">Künstler</button>
-                <button @onclick="() => _sortByTrackCount = true"
-                        class="rounded-full px-3 py-1 transition-colors @(_sortByTrackCount ? "bg-surface-2 text-ink" : "text-muted")">Titelanzahl</button>
+                <button @onclick="ResetFilters" disabled="@(!HasActiveFilters)"
+                        class="text-sm text-muted transition-colors hover:text-ink disabled:cursor-default disabled:opacity-40">
+                    Filter zurücksetzen
+                </button>
             </div>
-        </div>
+        </section>
 
-        @if (VisibleArtists.Count == 0)
+        @if (FilteredTracks.Count == 0)
         {
-            <div class="mt-20 flex flex-col items-center text-center text-muted">
+            <div class="mt-16 flex flex-col items-center text-center text-muted">
                 <h2 class="text-lg font-medium text-ink">Keine Treffer</h2>
-                <p class="mt-1 text-sm">Passe Suche oder Dateiformat an.</p>
+                <p class="mt-1 text-sm">Passe Suche oder Filter an.</p>
                 <button @onclick="ResetFilters" class="mt-4 text-sm text-accent hover:underline">Filter zurücksetzen</button>
             </div>
         }
+        else if (Browse.ViewMode == LibraryViewMode.Songs)
+        {
+            @SongsView
+        }
+        else if (Browse.ViewMode == LibraryViewMode.Artists)
+        {
+            @ArtistsView
+        }
         else
         {
-            <p class="mt-4 text-xs text-muted">@VisibleArtists.Count von @Library.Artists.Count Künstlern</p>
-            <div class="mt-3 overflow-visible rounded-xl border border-line bg-surface/40">
-                <div class="grid grid-cols-[2rem_minmax(0,1fr)_7rem_6rem_2rem] gap-3 border-b border-line px-4 py-2 text-xs uppercase tracking-wide text-muted">
-                    <span></span>
-                    <span>Künstler</span>
-                    <span class="text-right">Alben</span>
-                    <span class="text-right">Titel</span>
-                    <span></span>
-                </div>
-                @foreach (var artist in VisibleArtists)
-                {
-                    <article @onclick="() => OpenArtist(artist.Id)"
-                             class="group grid cursor-pointer grid-cols-[2rem_minmax(0,1fr)_7rem_6rem_2rem] items-center gap-3 border-b border-line/70 px-4 py-3 transition-colors last:border-b-0 hover:bg-surface-2">
-                        <button @onclick="() => Playback.Play(artist.Tracks)" @onclick:stopPropagation
-                                class="flex h-8 w-8 items-center justify-center rounded-full text-muted transition-colors hover:bg-accent hover:text-white"
-                                aria-label="Alle Titel von @artist.Name abspielen">
-                            <svg class="h-4 w-4 translate-x-px" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
-                        </button>
-                        <div class="min-w-0">
-                            <h2 class="truncate text-sm font-medium text-ink group-hover:text-accent">@artist.Name</h2>
-                            @if (artist.Albums.Count > 0)
-                            {
-                                <p class="mt-0.5 truncate text-xs text-muted">@string.Join(" · ", artist.Albums.Take(3).Select(album => album.Title))</p>
-                            }
-                            else
-                            {
-                                <p class="mt-0.5 text-xs text-muted">Songs ohne Albumangabe</p>
-                            }
-                        </div>
-                        <span class="text-right text-sm tabular-nums text-muted">@artist.AlbumCount</span>
-                        <span class="text-right text-sm tabular-nums text-muted">@artist.TrackCount</span>
-                        <svg class="h-4 w-4 text-muted transition-transform group-hover:translate-x-0.5 group-hover:text-ink" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6" /></svg>
-                    </article>
-                }
-            </div>
+            @AlbumsView
         }
     }
 </div>
 
-@code {
-    private bool _sortByTrackCount;
-    private string _searchText = "";
-    private AudioFileFilter _fileFilter = AudioFileFilter.All;
+@if (_showMetadataEditor && SelectedTracks.Count > 0)
+{
+    <MetadataEditor Tracks="SelectedTracks" OnSaved="OnMetadataSaved" OnCancel="CloseMetadataEditor" />
+}
 
-    private static readonly (AudioFileFilter Value, string Label)[] FormatOptions =
+@code {
+    private readonly HashSet<string> _selectedPaths = new(StringComparer.OrdinalIgnoreCase);
+    private bool _showMetadataEditor;
+    private static readonly (LibraryViewMode Value, string Label)[] ViewOptions =
     [
-        (AudioFileFilter.All, "Alle"),
-        (AudioFileFilter.Mp3, "MP3"),
-        (AudioFileFilter.Flac, "FLAC")
+        (LibraryViewMode.Songs, "Songs"),
+        (LibraryViewMode.Artists, "Künstler"),
+        (LibraryViewMode.Albums, "Alben")
     ];
 
-    private IReadOnlyList<Artist> VisibleArtists
+    private IReadOnlyList<string> ArtistOptions => Library.Tracks
+        .Select(track => track.Artist)
+        .Where(artist => !string.IsNullOrWhiteSpace(artist))
+        .Distinct(StringComparer.CurrentCultureIgnoreCase)
+        .OrderBy(artist => artist, StringComparer.CurrentCultureIgnoreCase)
+        .ToList();
+
+    private IReadOnlyList<string> GenreOptions => Library.Tracks
+        .Select(track => track.Genre)
+        .Where(genre => !string.IsNullOrWhiteSpace(genre))
+        .Distinct(StringComparer.CurrentCultureIgnoreCase)
+        .OrderBy(genre => genre, StringComparer.CurrentCultureIgnoreCase)
+        .ToList();
+
+    private IReadOnlyList<Track> FilteredTracks => LibraryFilter.Apply(
+        Library.Tracks,
+        Browse.SearchText,
+        Browse.FileFilter,
+        Browse.SelectedArtist,
+        Browse.SelectedGenre);
+
+    private IReadOnlyList<Track> VisibleTracks => LibraryFilter.Sort(
+        FilteredTracks,
+        Browse.TrackSort,
+        Browse.SortDescending);
+
+    private IReadOnlyList<ArtistRow> VisibleArtists
     {
         get
         {
-            var artists = LibraryFilter.Apply(Library.Artists, _searchText, _fileFilter);
-            return _sortByTrackCount
-                ? artists.OrderByDescending(artist => artist.TrackCount)
-                    .ThenBy(artist => artist.Name, StringComparer.CurrentCultureIgnoreCase)
-                    .ToList()
-                : artists;
+            var paths = FilteredTracks
+                .Select(track => track.FilePath)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            var rows = Library.Artists
+                .Select(artist =>
+                {
+                    var tracks = artist.Tracks.Where(track => paths.Contains(track.FilePath)).ToList();
+                    var albumCount = tracks
+                        .Where(track => !string.IsNullOrWhiteSpace(track.Album))
+                        .Select(track => track.AlbumKey)
+                        .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                        .Count();
+                    return new ArtistRow(artist, tracks, albumCount);
+                })
+                .Where(row => row.Tracks.Count > 0);
+
+            return SortArtists(rows).ToList();
         }
     }
 
+    private IReadOnlyList<AlbumRow> VisibleAlbums
+    {
+        get
+        {
+            var paths = FilteredTracks
+                .Select(track => track.FilePath)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            var rows = Library.Albums
+                .Select(album => new AlbumRow(
+                    album,
+                    album.Tracks.Where(track => paths.Contains(track.FilePath)).ToList()))
+                .Where(row => row.Tracks.Count > 0);
+
+            return SortAlbums(rows).ToList();
+        }
+    }
+
+    private bool HasActiveFilters =>
+        !string.IsNullOrWhiteSpace(Browse.SearchText)
+        || !string.IsNullOrWhiteSpace(Browse.SelectedArtist)
+        || !string.IsNullOrWhiteSpace(Browse.SelectedGenre)
+        || Browse.FileFilter != AudioFileFilter.All;
+
     protected override void OnInitialized() => Library.Changed += OnLibraryChanged;
-    private void OnLibraryChanged(object? sender, EventArgs e) => InvokeAsync(StateHasChanged);
-    private void OpenArtist(string id) => Nav.NavigateTo($"/artist/{id}");
+
+    private void OnLibraryChanged(object? sender, EventArgs e)
+    {
+        _selectedPaths.RemoveWhere(path => !Library.Tracks.Any(track =>
+            string.Equals(track.FilePath, path, StringComparison.OrdinalIgnoreCase)));
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private IEnumerable<ArtistRow> SortArtists(IEnumerable<ArtistRow> rows)
+    {
+        if (Browse.SortDescending)
+        {
+            return Browse.ArtistSort switch
+            {
+                ArtistSortOrder.TrackCount => rows.OrderByDescending(row => row.Tracks.Count).ThenBy(row => row.Artist.Name, StringComparer.CurrentCultureIgnoreCase),
+                ArtistSortOrder.AlbumCount => rows.OrderByDescending(row => row.AlbumCount).ThenBy(row => row.Artist.Name, StringComparer.CurrentCultureIgnoreCase),
+                _ => rows.OrderByDescending(row => row.Artist.Name, StringComparer.CurrentCultureIgnoreCase)
+            };
+        }
+
+        return Browse.ArtistSort switch
+        {
+            ArtistSortOrder.TrackCount => rows.OrderBy(row => row.Tracks.Count).ThenBy(row => row.Artist.Name, StringComparer.CurrentCultureIgnoreCase),
+            ArtistSortOrder.AlbumCount => rows.OrderBy(row => row.AlbumCount).ThenBy(row => row.Artist.Name, StringComparer.CurrentCultureIgnoreCase),
+            _ => rows.OrderBy(row => row.Artist.Name, StringComparer.CurrentCultureIgnoreCase)
+        };
+    }
+
+    private IEnumerable<AlbumRow> SortAlbums(IEnumerable<AlbumRow> rows)
+    {
+        if (Browse.SortDescending)
+        {
+            return Browse.AlbumSort switch
+            {
+                AlbumSortOrder.Artist => rows.OrderByDescending(row => row.Album.Artist, StringComparer.CurrentCultureIgnoreCase).ThenBy(row => row.Album.Title, StringComparer.CurrentCultureIgnoreCase),
+                AlbumSortOrder.TrackCount => rows.OrderByDescending(row => row.Tracks.Count).ThenBy(row => row.Album.Title, StringComparer.CurrentCultureIgnoreCase),
+                _ => rows.OrderByDescending(row => row.Album.Title, StringComparer.CurrentCultureIgnoreCase)
+            };
+        }
+
+        return Browse.AlbumSort switch
+        {
+            AlbumSortOrder.Artist => rows.OrderBy(row => row.Album.Artist, StringComparer.CurrentCultureIgnoreCase).ThenBy(row => row.Album.Title, StringComparer.CurrentCultureIgnoreCase),
+            AlbumSortOrder.TrackCount => rows.OrderBy(row => row.Tracks.Count).ThenBy(row => row.Album.Title, StringComparer.CurrentCultureIgnoreCase),
+            _ => rows.OrderBy(row => row.Album.Title, StringComparer.CurrentCultureIgnoreCase)
+        };
+    }
+
+    private RenderFragment SongsView => @<div class="mt-5">
+            @{
+                var tracks = VisibleTracks;
+            }
+            <div class="mb-2 flex flex-wrap items-center justify-between gap-3">
+                <div class="flex items-center gap-3">
+                    <p class="text-xs text-muted">@tracks.Count von @Library.Tracks.Count Songs</p>
+                    @if (_selectedPaths.Count > 0)
+                    {
+                        <span class="text-xs font-medium text-accent">@_selectedPaths.Count ausgewählt</span>
+                        <button @onclick="OpenMetadataEditor" class="rounded-full bg-surface-2 px-3 py-1.5 text-xs text-ink hover:bg-line">Metadaten bearbeiten</button>
+                        <button @onclick="ClearSelection" class="text-xs text-muted hover:text-ink">Auswahl aufheben</button>
+                    }
+                </div>
+                <button @onclick="() => Playback.Play(_selectedPaths.Count > 0 ? SelectedTracks : tracks)"
+                        class="rounded-full bg-accent px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+                    @(_selectedPaths.Count > 0 ? "Auswahl abspielen" : "Alle abspielen")
+                </button>
+            </div>
+            <div class="overflow-x-auto rounded-xl border border-line bg-surface/40">
+                <div class="min-w-[940px]">
+                    <div class="grid grid-cols-[2rem_2.5rem_minmax(14rem,2fr)_minmax(10rem,1fr)_minmax(10rem,1fr)_minmax(8rem,1fr)_4rem_7rem] items-center gap-3 border-b border-line px-4 py-2 text-xs uppercase tracking-wide text-muted">
+                        <input type="checkbox" checked="@AllVisibleSelected" @onchange="args => ToggleVisibleSelection(tracks, args.Value is true)"
+                               class="h-4 w-4 accent-accent" aria-label="Alle sichtbaren Titel auswählen" />
+                        <span>#</span>
+                        <span>Titel</span>
+                        <span>Künstler</span>
+                        <span>Album</span>
+                        <span>Genre</span>
+                        <span class="text-right">Dauer</span>
+                        <span></span>
+                    </div>
+                    @for (var i = 0; i < tracks.Count; i++)
+                    {
+                        var index = i;
+                        var track = tracks[index];
+                        var isCurrent = Playback.Current?.FilePath == track.FilePath;
+                        var albumId = Library.GetAlbumId(track);
+
+                        <article class="group grid grid-cols-[2rem_2.5rem_minmax(14rem,2fr)_minmax(10rem,1fr)_minmax(10rem,1fr)_minmax(8rem,1fr)_4rem_7rem] items-center gap-3 border-b border-line/70 px-4 py-2.5 last:border-b-0 hover:bg-surface-2 @(isCurrent ? "bg-surface-2" : "")">
+                            <input type="checkbox" checked="@_selectedPaths.Contains(track.FilePath)"
+                                   @onchange="args => ToggleTrackSelection(track.FilePath, args.Value is true)"
+                                   class="h-4 w-4 accent-accent" aria-label="@track.Title auswählen" />
+                            <button @onclick="() => Playback.Play(tracks, index)"
+                                    class="flex h-7 w-7 items-center justify-center rounded-full text-muted hover:text-ink"
+                                    aria-label="@track.Title abspielen">
+                                @if (isCurrent)
+                                {
+                                    <svg class="h-4 w-4 text-accent" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+                                }
+                                else
+                                {
+                                    <span class="text-sm tabular-nums group-hover:hidden">@(index + 1)</span>
+                                    <svg class="hidden h-4 w-4 group-hover:block" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+                                }
+                            </button>
+                            <div class="min-w-0">
+                                <div class="truncate text-sm font-medium @(isCurrent ? "text-accent" : "text-ink")">@track.Title</div>
+                                <div class="mt-0.5 text-xs uppercase tracking-wide text-muted">@Path.GetExtension(track.FilePath).TrimStart('.')</div>
+                            </div>
+                            <button @onclick="() => OpenArtist(track.Artist)" class="truncate text-left text-sm text-muted hover:text-ink hover:underline">@track.Artist</button>
+                            @if (albumId is not null)
+                            {
+                                <button @onclick="() => OpenAlbum(albumId)" class="truncate text-left text-sm text-muted hover:text-ink hover:underline">@track.Album</button>
+                            }
+                            else
+                            {
+                                <span class="truncate text-sm text-muted/70">—</span>
+                            }
+                            <span class="truncate text-sm text-muted">@(string.IsNullOrWhiteSpace(track.Genre) ? "—" : track.Genre)</span>
+                            <span class="text-right text-xs tabular-nums text-muted">@track.DurationLabel</span>
+                            <div class="flex items-center justify-end gap-1">
+                                <FavoriteButton Track="track" />
+                                <AddToPlaylistButton Track="track" />
+                                <TrackActionsButton Track="track" />
+                            </div>
+                        </article>
+                    }
+                </div>
+            </div>
+        </div>;
+
+    private RenderFragment ArtistsView => @<div class="mt-5">
+            <p class="mb-2 text-xs text-muted">@VisibleArtists.Count Künstler in der Auswahl</p>
+            <div class="overflow-hidden rounded-xl border border-line bg-surface/40">
+                <div class="grid grid-cols-[2.5rem_minmax(0,1fr)_7rem_6rem_2rem] gap-3 border-b border-line px-4 py-2 text-xs uppercase tracking-wide text-muted">
+                    <span></span>
+                    <span>Künstler</span>
+                    <span class="text-right">Alben</span>
+                    <span class="text-right">Songs</span>
+                    <span></span>
+                </div>
+                @foreach (var row in VisibleArtists)
+                {
+                    <article @onclick="() => OpenArtist(row.Artist.Name)"
+                             class="group grid cursor-pointer grid-cols-[2.5rem_minmax(0,1fr)_7rem_6rem_2rem] items-center gap-3 border-b border-line/70 px-4 py-3 transition-colors last:border-b-0 hover:bg-surface-2">
+                        <button @onclick="() => Playback.Play(row.Tracks)" @onclick:stopPropagation
+                                class="flex h-8 w-8 items-center justify-center rounded-full text-muted transition-colors hover:bg-accent hover:text-white"
+                                aria-label="Auswahl von @row.Artist.Name abspielen">
+                            <svg class="h-4 w-4 translate-x-px" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+                        </button>
+                        <div class="min-w-0">
+                            <h2 class="truncate text-sm font-medium text-ink group-hover:text-accent">@row.Artist.Name</h2>
+                            <p class="mt-0.5 truncate text-xs text-muted">@ArtistGenres(row.Tracks)</p>
+                        </div>
+                        <span class="text-right text-sm tabular-nums text-muted">@row.AlbumCount</span>
+                        <span class="text-right text-sm tabular-nums text-muted">@row.Tracks.Count</span>
+                        <svg class="h-4 w-4 text-muted transition-transform group-hover:translate-x-0.5 group-hover:text-ink" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6" /></svg>
+                    </article>
+                }
+            </div>
+        </div>;
+
+    private RenderFragment AlbumsView => @<div class="mt-5">
+            <p class="mb-2 text-xs text-muted">@VisibleAlbums.Count Alben in der Auswahl</p>
+            <div class="overflow-hidden rounded-xl border border-line bg-surface/40">
+                <div class="grid grid-cols-[2.5rem_minmax(0,1fr)_minmax(10rem,1fr)_minmax(8rem,1fr)_6rem_2rem] gap-3 border-b border-line px-4 py-2 text-xs uppercase tracking-wide text-muted">
+                    <span></span>
+                    <span>Album</span>
+                    <span>Künstler</span>
+                    <span>Genre</span>
+                    <span class="text-right">Songs</span>
+                    <span></span>
+                </div>
+                @foreach (var row in VisibleAlbums)
+                {
+                    <article @onclick="() => OpenAlbum(row.Album.Id)"
+                             class="group grid cursor-pointer grid-cols-[2.5rem_minmax(0,1fr)_minmax(10rem,1fr)_minmax(8rem,1fr)_6rem_2rem] items-center gap-3 border-b border-line/70 px-4 py-3 transition-colors last:border-b-0 hover:bg-surface-2">
+                        <button @onclick="() => Playback.Play(row.Tracks)" @onclick:stopPropagation
+                                class="flex h-8 w-8 items-center justify-center rounded-full text-muted transition-colors hover:bg-accent hover:text-white"
+                                aria-label="@row.Album.Title abspielen">
+                            <svg class="h-4 w-4 translate-x-px" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+                        </button>
+                        <h2 class="truncate text-sm font-medium text-ink group-hover:text-accent">@row.Album.Title</h2>
+                        <button @onclick="() => OpenArtist(row.Tracks[0].Artist)" @onclick:stopPropagation
+                                class="truncate text-left text-sm text-muted hover:text-ink hover:underline">@row.Tracks[0].Artist</button>
+                        <span class="truncate text-sm text-muted">@ArtistGenres(row.Tracks)</span>
+                        <span class="text-right text-sm tabular-nums text-muted">@row.Tracks.Count</span>
+                        <svg class="h-4 w-4 text-muted transition-transform group-hover:translate-x-0.5 group-hover:text-ink" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6" /></svg>
+                    </article>
+                }
+            </div>
+        </div>;
+
+    private string ArtistGenres(IReadOnlyList<Track> tracks)
+    {
+        var genres = tracks
+            .Select(track => track.Genre)
+            .Where(genre => !string.IsNullOrWhiteSpace(genre))
+            .Distinct(StringComparer.CurrentCultureIgnoreCase)
+            .Take(3)
+            .ToList();
+        return genres.Count == 0 ? "Ohne Genreangabe" : string.Join(" · ", genres);
+    }
+
+    private void OpenArtist(string artistName) =>
+        Nav.NavigateTo($"/artist/{Library.GetArtistId(artistName)}");
+
+    private void OpenAlbum(string albumId) => Nav.NavigateTo($"/album/{albumId}");
 
     private async Task ImportAsync()
     {
@@ -159,9 +479,46 @@
 
     private void ResetFilters()
     {
-        _searchText = "";
-        _fileFilter = AudioFileFilter.All;
+        Browse.SearchText = "";
+        Browse.SelectedArtist = "";
+        Browse.SelectedGenre = "";
+        Browse.FileFilter = AudioFileFilter.All;
+    }
+
+    private IReadOnlyList<Track> SelectedTracks => Library.Tracks
+        .Where(track => _selectedPaths.Contains(track.FilePath))
+        .ToList();
+
+    private bool AllVisibleSelected => VisibleTracks.Count > 0
+        && VisibleTracks.All(track => _selectedPaths.Contains(track.FilePath));
+
+    private void ToggleTrackSelection(string filePath, bool selected)
+    {
+        if (selected) _selectedPaths.Add(filePath);
+        else _selectedPaths.Remove(filePath);
+    }
+
+    private void ToggleVisibleSelection(IReadOnlyList<Track> tracks, bool selected)
+    {
+        foreach (var track in tracks)
+        {
+            if (selected) _selectedPaths.Add(track.FilePath);
+            else _selectedPaths.Remove(track.FilePath);
+        }
+    }
+
+    private void ClearSelection() => _selectedPaths.Clear();
+    private void OpenMetadataEditor() => _showMetadataEditor = true;
+    private void CloseMetadataEditor() => _showMetadataEditor = false;
+
+    private void OnMetadataSaved(TrackMetadataEditResult result)
+    {
+        _showMetadataEditor = false;
+        _selectedPaths.Clear();
     }
 
     public void Dispose() => Library.Changed -= OnLibraryChanged;
+
+    private sealed record ArtistRow(Artist Artist, IReadOnlyList<Track> Tracks, int AlbumCount);
+    private sealed record AlbumRow(Album Album, IReadOnlyList<Track> Tracks);
 }

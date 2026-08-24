@@ -1,0 +1,112 @@
+@inject LyricsService Lyrics
+@inject PlaybackService Playback
+@inject IJSRuntime JS
+
+<section class="overflow-hidden rounded-2xl border border-line bg-gradient-to-br from-accent/20 via-surface to-surface">
+    <header class="flex items-center justify-between gap-4 border-b border-white/10 px-6 py-4">
+        <div>
+            <h2 class="text-lg font-semibold">Songtext</h2>
+            @if (_document is not null)
+            {
+                <p class="mt-0.5 text-xs text-muted">@_document.Source · @(_document.IsSynchronized ? "zeitsynchron" : "ohne Zeitmarken")</p>
+            }
+        </div>
+        <svg class="h-5 w-5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 10h12M4 14h16M4 18h10" /></svg>
+    </header>
+
+    @if (_loading)
+    {
+        <div class="flex h-56 items-center justify-center gap-2 text-sm text-muted">
+            <div class="h-4 w-4 animate-spin rounded-full border-2 border-line border-t-accent"></div>
+            Songtext wird geladen …
+        </div>
+    }
+    else if (_document is null)
+    {
+        <div class="flex h-56 flex-col items-center justify-center px-8 text-center text-muted">
+            <p class="text-sm font-medium text-ink">Kein Songtext vorhanden</p>
+            <p class="mt-2 max-w-md text-xs leading-5">Elyra liest eingebettete Liedtexte und gleichnamige LRC-Dateien neben dem Musiktitel.</p>
+        </div>
+    }
+    else
+    {
+        <div class="max-h-96 space-y-1 overflow-y-auto px-6 py-6">
+            @for (var index = 0; index < _document.Lines.Count; index++)
+            {
+                var line = _document.Lines[index];
+                var isActive = index == ActiveLineIndex;
+                <button id="@LineId(index)" @key="index" disabled="@(line.Timestamp is null)"
+                        @onclick="() => Seek(line.Timestamp)"
+                        class="block w-full rounded-lg px-3 py-2 text-left text-lg font-semibold leading-relaxed transition @(isActive ? "bg-white/10 text-white" : "text-white/45 hover:text-white/75") disabled:cursor-default">
+                    @(string.IsNullOrEmpty(line.Text) ? "♪" : line.Text)
+                </button>
+            }
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public Track Track { get; set; } = null!;
+    [Parameter] public TimeSpan Position { get; set; }
+
+    private LyricsDocument? _document;
+    private string? _loadedPath;
+    private bool _loading;
+    private int _generation;
+    private int _lastScrolledLine = -1;
+
+    private int ActiveLineIndex
+    {
+        get
+        {
+            if (_document is null || !_document.IsSynchronized)
+                return -1;
+            for (var index = _document.Lines.Count - 1; index >= 0; index--)
+            {
+                if (_document.Lines[index].Timestamp <= Position)
+                    return index;
+            }
+            return -1;
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.Equals(_loadedPath, Track.FilePath, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        _loadedPath = Track.FilePath;
+        _document = null;
+        _loading = true;
+        _lastScrolledLine = -1;
+        var generation = ++_generation;
+        try
+        {
+            var document = await Lyrics.LoadAsync(Track);
+            if (generation == _generation)
+                _document = document;
+        }
+        finally
+        {
+            if (generation == _generation)
+                _loading = false;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        var active = ActiveLineIndex;
+        if (active >= 0 && active != _lastScrolledLine)
+        {
+            _lastScrolledLine = active;
+            await JS.InvokeVoidAsync("elyra.scrollLyric", LineId(active));
+        }
+    }
+
+    private static string LineId(int index) => $"elyra-lyric-{index}";
+    private void Seek(TimeSpan? timestamp)
+    {
+        if (timestamp is not null)
+            Playback.Seek(timestamp.Value);
+    }
+}

@@ -1,13 +1,16 @@
 @page "/playlists"
 @inject PlaylistService PlaylistSvc
+@inject SmartPlaylistService SmartPlaylists
 @inject NavigationManager Nav
+@inject MusicLibraryService Library
+@inject UserMusicDataService UserMusic
 @implements IDisposable
 
 <div class="px-8 py-6">
     <header class="flex items-end justify-between gap-4">
         <div>
             <h1 class="text-2xl font-semibold tracking-tight">Wiedergabelisten</h1>
-            <p class="mt-1 text-sm text-muted">@PlaylistSvc.Playlists.Count Listen</p>
+            <p class="mt-1 text-sm text-muted">@SmartPlaylists.GetAll().Count intelligente · @PlaylistSvc.Playlists.Count eigene Listen</p>
         </div>
         <button @onclick="CreateNew"
                 class="shrink-0 rounded-full bg-accent px-5 py-2.5 text-sm font-medium text-white transition hover:opacity-90">
@@ -15,9 +18,32 @@
         </button>
     </header>
 
+    <section class="mt-7">
+        <div class="mb-3">
+            <h2 class="text-lg font-semibold">Intelligente Wiedergabelisten</h2>
+            <p class="mt-1 text-xs text-muted">Werden automatisch aus deiner Mediathek und deinem Hörverlauf aktualisiert.</p>
+        </div>
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            @foreach (var smart in SmartPlaylists.GetAll())
+            {
+                <button @onclick="() => OpenSmart(smart.Id)" class="group rounded-xl border border-line bg-surface p-4 text-left transition hover:-translate-y-0.5 hover:bg-surface-2">
+                    <div class="flex items-start justify-between gap-3">
+                        <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/20 text-accent">
+                            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 17V7m5 13V4m5 13V7m5 13V4" /></svg>
+                        </div>
+                        <span class="rounded-full bg-surface-2 px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted">@smart.Accent</span>
+                    </div>
+                    <h3 class="mt-4 truncate font-semibold group-hover:text-accent">@smart.Name</h3>
+                    <p class="mt-1 line-clamp-2 text-xs text-muted">@smart.Description</p>
+                    <p class="mt-3 text-xs tabular-nums text-muted">@smart.Tracks.Count Titel</p>
+                </button>
+            }
+        </div>
+    </section>
+
     @if (PlaylistSvc.Playlists.Count == 0)
     {
-        <div class="mt-20 flex flex-col items-center justify-center text-center">
+        <div class="mt-10 flex flex-col items-center justify-center rounded-xl border border-line bg-surface/40 px-6 py-10 text-center">
             <div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-surface">
                 <svg class="h-7 w-7 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M3 6h13M3 12h13M3 18h9M17 14v6M14 17h6" />
@@ -29,7 +55,8 @@
     }
     else
     {
-        <div class="mt-6 flex flex-col divide-y divide-line overflow-hidden rounded-xl border border-line">
+        <h2 class="mt-9 text-lg font-semibold">Eigene Wiedergabelisten</h2>
+        <div class="mt-3 flex flex-col divide-y divide-line overflow-hidden rounded-xl border border-line">
             @foreach (var pl in PlaylistSvc.Playlists)
             {
                 <button @onclick="() => Open(pl.Id)" class="flex items-center gap-4 px-4 py-3 text-left transition-colors hover:bg-surface-2">
@@ -50,7 +77,12 @@
 </div>
 
 @code {
-    protected override void OnInitialized() => PlaylistSvc.Changed += OnChanged;
+    protected override void OnInitialized()
+    {
+        PlaylistSvc.Changed += OnChanged;
+        Library.Changed += OnChanged;
+        UserMusic.Changed += OnChanged;
+    }
     private void OnChanged(object? sender, EventArgs e) => InvokeAsync(StateHasChanged);
 
     private void CreateNew()
@@ -60,6 +92,12 @@
     }
 
     private void Open(string id) => Nav.NavigateTo($"/playlist/{id}");
+    private void OpenSmart(string id) => Nav.NavigateTo($"/smart-playlist/{id}");
 
-    public void Dispose() => PlaylistSvc.Changed -= OnChanged;
+    public void Dispose()
+    {
+        PlaylistSvc.Changed -= OnChanged;
+        Library.Changed -= OnChanged;
+        UserMusic.Changed -= OnChanged;
+    }
 }

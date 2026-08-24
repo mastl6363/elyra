@@ -15,7 +15,13 @@ artifacts/
 *.ipa
 *.app
 *.dSYM/
+*.pfx
+**/AppPackages/
+**/BundleArtifacts/
+**/Properties/PublishProfiles/
 Resources/raw/_unused/
+work/
+vlc-help.txt
 
 # ── Node / Tailwind ───────────────────────────────────────────────────
 node_modules/

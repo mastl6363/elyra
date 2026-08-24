@@ -1,0 +1,160 @@
+@inject MusicLibraryService Library
+
+<div class="fixed inset-0 z-30 flex items-center justify-center bg-black/70 p-6" @onclick="Cancel">
+    <section class="w-full max-w-xl rounded-2xl border border-line bg-surface shadow-2xl shadow-black/40"
+             role="dialog" aria-modal="true" aria-labelledby="metadata-title" @onclick:stopPropagation>
+        <header class="flex items-start justify-between gap-4 border-b border-line px-6 py-5">
+            <div>
+                <h2 id="metadata-title" class="text-xl font-semibold">Metadaten bearbeiten</h2>
+                <p class="mt-1 text-sm text-muted">@Tracks.Count @(Tracks.Count == 1 ? "Titel" : "Titel ausgewählt") · Änderungen werden in die Audiodateien geschrieben.</p>
+            </div>
+            <button @onclick="Cancel" class="rounded-full p-2 text-muted hover:bg-surface-2 hover:text-ink" aria-label="Schließen">
+                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 6 12 12M18 6 6 18" /></svg>
+            </button>
+        </header>
+
+        <div class="space-y-4 px-6 py-5">
+            @if (Tracks.Count == 1)
+            {
+                <MetadataField Label="Titel" Enabled="_changeTitle" EnabledChanged="value => _changeTitle = value">
+                    <input @bind="_title" class="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent" />
+                </MetadataField>
+            }
+
+            <MetadataField Label="Künstler" Enabled="_changeArtist" EnabledChanged="value => _changeArtist = value">
+                <input @bind="_artist" placeholder="Künstler eingeben"
+                       class="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none placeholder:text-muted focus:border-accent" />
+            </MetadataField>
+            <MetadataField Label="Album" Enabled="_changeAlbum" EnabledChanged="value => _changeAlbum = value">
+                <input @bind="_album" placeholder="Leer = Album entfernen"
+                       class="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none placeholder:text-muted focus:border-accent" />
+            </MetadataField>
+            <MetadataField Label="Genre" Enabled="_changeGenre" EnabledChanged="value => _changeGenre = value">
+                <input @bind="_genre" placeholder="Leer = Genre entfernen"
+                       class="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none placeholder:text-muted focus:border-accent" />
+            </MetadataField>
+            <MetadataField Label="Jahr" Enabled="_changeYear" EnabledChanged="value => _changeYear = value">
+                <input @bind="_year" inputmode="numeric" placeholder="0 = Jahr entfernen"
+                       class="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none placeholder:text-muted focus:border-accent" />
+            </MetadataField>
+
+            @if (!string.IsNullOrWhiteSpace(_message))
+            {
+                <p class="text-sm @(_isError ? "text-red-400" : "text-muted")">@_message</p>
+            }
+        </div>
+
+        <footer class="flex items-center justify-end gap-3 border-t border-line px-6 py-4">
+            <button @onclick="Cancel" disabled="@_saving" class="rounded-full px-4 py-2 text-sm text-muted hover:bg-surface-2 hover:text-ink">Abbrechen</button>
+            <button @onclick="SaveAsync" disabled="@(_saving || !HasChanges)"
+                    class="rounded-full bg-accent px-5 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-40">
+                @(_saving ? "Speichert …" : "In Dateien speichern")
+            </button>
+        </footer>
+    </section>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<Track> Tracks { get; set; } = [];
+    [Parameter] public EventCallback<TrackMetadataEditResult> OnSaved { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    private bool _initialized;
+    private bool _saving;
+    private bool _isError;
+    private string? _message;
+    private bool _changeTitle;
+    private bool _changeArtist;
+    private bool _changeAlbum;
+    private bool _changeGenre;
+    private bool _changeYear;
+    private string _title = "";
+    private string _artist = "";
+    private string _album = "";
+    private string _genre = "";
+    private string _year = "";
+
+    private bool HasChanges => _changeTitle || _changeArtist || _changeAlbum || _changeGenre || _changeYear;
+
+    protected override void OnParametersSet()
+    {
+        if (_initialized || Tracks.Count == 0)
+            return;
+        _initialized = true;
+        _title = Tracks.Count == 1 ? Tracks[0].Title : "";
+        _artist = CommonValue(track => track.Artist);
+        _album = CommonValue(track => track.Album);
+        _genre = CommonValue(track => track.Genre);
+        _year = Tracks.Select(track => track.Year).Distinct().Count() == 1
+            ? Tracks[0].Year.ToString()
+            : "";
+        _changeTitle = Tracks.Count == 1;
+    }
+
+    private string CommonValue(Func<Track, string> selector)
+    {
+        var values = Tracks.Select(selector).Distinct(StringComparer.CurrentCultureIgnoreCase).ToList();
+        return values.Count == 1 ? values[0] : "";
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_changeTitle && string.IsNullOrWhiteSpace(_title))
+        {
+            SetMessage("Ein Titel darf nicht leer sein.", true);
+            return;
+        }
+        if (_changeArtist && string.IsNullOrWhiteSpace(_artist))
+        {
+            SetMessage("Ein Künstler darf nicht leer sein.", true);
+            return;
+        }
+        if (_changeYear && (!uint.TryParse(_year, out var parsedYear) || parsedYear > 9999))
+        {
+            SetMessage("Das Jahr muss eine Zahl zwischen 0 und 9999 sein.", true);
+            return;
+        }
+
+        _saving = true;
+        _message = null;
+        try
+        {
+            _ = uint.TryParse(_year, out var year);
+            var result = await Library.UpdateTrackMetadataAsync(
+                Tracks.Select(track => track.FilePath),
+                new TrackMetadataChanges
+                {
+                    ChangeTitle = _changeTitle,
+                    Title = _title,
+                    ChangeArtist = _changeArtist,
+                    Artist = _artist,
+                    ChangeAlbum = _changeAlbum,
+                    Album = _album,
+                    ChangeGenre = _changeGenre,
+                    Genre = _genre,
+                    ChangeYear = _changeYear,
+                    Year = year
+                });
+
+            if (result.FailedFiles.Count > 0)
+            {
+                SetMessage($"{result.Updated} gespeichert, {result.FailedFiles.Count} Dateien konnten nicht geändert werden.", true);
+                return;
+            }
+
+            await OnSaved.InvokeAsync(result);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void SetMessage(string message, bool error)
+    {
+        _message = message;
+        _isError = error;
+    }
+
+    private Task Cancel() => OnCancel.InvokeAsync();
+}

@@ -2,7 +2,10 @@
 @inject MusicLibraryService Library
 @inject FolderPickerService FolderPicker
 @inject PlaybackService Playback
+@inject PlaybackPreferencesService PlaybackPreferences
 @inject MusicBrainzMetadataService MusicBrainz
+@inject LibraryHealthService LibraryHealth
+@inject EqualizerService Equalizer
 @implements IDisposable
 
 <div class="mx-auto max-w-3xl px-8 py-6">
@@ -23,6 +26,10 @@
                 @if (Library.Tracks.Count > 0)
                 {
                     <div class="mt-1 text-xs text-muted">@Library.Albums.Count Alben · @Library.Tracks.Count Titel</div>
+                    <div class="mt-1 flex items-center gap-2 text-xs @(Library.IsWatching ? "text-accent" : "text-muted")">
+                        <span class="h-1.5 w-1.5 rounded-full @(Library.IsWatching ? "bg-accent" : "bg-muted")"></span>
+                        @(Library.IsWatching ? "Änderungen werden automatisch erkannt" : "Ordnerüberwachung ist nicht aktiv")
+                    </div>
                 }
             </div>
 
@@ -103,16 +110,166 @@
         <div class="border-b border-line px-5 py-4">
             <h2 class="font-medium">Wiedergabe</h2>
         </div>
-        <div class="flex items-center justify-between gap-6 px-5 py-5">
+        <div class="flex items-center justify-between gap-6 border-b border-line px-5 py-5">
             <div>
                 <div class="text-sm text-ink">Lautstärke</div>
-                <div class="mt-1 text-xs text-muted">Gilt für die aktuelle App-Sitzung.</div>
+                <div class="mt-1 text-xs text-muted">Wird zusammen mit Queue, Shuffle, Repeat und Wiedergabeposition gespeichert.</div>
             </div>
             <div class="flex min-w-52 items-center gap-3">
                 <input type="range" class="elyra-range flex-1" min="0" max="100" value="@Playback.Volume"
                        style="@VolumeStyle" @oninput="OnVolume" />
                 <span class="w-9 text-right text-xs tabular-nums text-muted">@Playback.Volume%</span>
             </div>
+        </div>
+        <div class="flex items-center justify-between gap-6 border-b border-line px-5 py-5">
+            <div>
+                <div class="text-sm text-ink">Lückenlose Wiedergabe</div>
+                <div class="mt-1 text-xs text-muted">Lädt den nächsten Titel vor und minimiert die Pause zwischen Titeln.</div>
+            </div>
+            <label class="relative inline-flex cursor-pointer items-center">
+                <input type="checkbox" class="peer sr-only" checked="@PlaybackPreferences.GaplessEnabled"
+                       @onchange="OnGaplessChanged" />
+                <span class="h-6 w-11 rounded-full bg-surface-2 transition peer-checked:bg-accent"></span>
+                <span class="absolute left-1 h-4 w-4 rounded-full bg-white transition peer-checked:translate-x-5"></span>
+            </label>
+        </div>
+        <div class="flex items-center justify-between gap-6 border-b border-line px-5 py-5">
+            <div>
+                <div class="text-sm text-ink">Crossfade</div>
+                <div class="mt-1 text-xs text-muted">
+                    @(PlaybackPreferences.CrossfadeSeconds == 0
+                        ? "Aus. Lückenlose Wiedergabe bleibt davon unabhängig aktiv."
+                        : $"Titel werden {PlaybackPreferences.CrossfadeSeconds} Sekunden lang überblendet.")
+                </div>
+            </div>
+            <div class="flex min-w-52 items-center gap-3">
+                <input type="range" class="elyra-range flex-1" min="0" max="12"
+                       value="@PlaybackPreferences.CrossfadeSeconds"
+                       style="@CrossfadeStyle" @oninput="OnCrossfade" />
+                <span class="w-9 text-right text-xs tabular-nums text-muted">
+                    @(PlaybackPreferences.CrossfadeSeconds == 0 ? "Aus" : $"{PlaybackPreferences.CrossfadeSeconds}s")
+                </span>
+            </div>
+        </div>
+        <div class="flex items-center justify-between gap-6 px-5 py-5">
+            <div>
+                <div class="text-sm text-ink">Lautstärke normalisieren</div>
+                <div class="mt-1 text-xs text-muted">Gleicht auffällige Lautstärkeunterschiede mit dem VLC-Normalizer aus. Wirkt nach einem Neustart.</div>
+            </div>
+            <label class="relative inline-flex cursor-pointer items-center">
+                <input type="checkbox" class="peer sr-only" checked="@PlaybackPreferences.NormalizeVolume"
+                       @onchange="OnNormalizeVolumeChanged" />
+                <span class="h-6 w-11 rounded-full bg-surface-2 transition peer-checked:bg-accent"></span>
+                <span class="absolute left-1 h-4 w-4 rounded-full bg-white transition peer-checked:translate-x-5"></span>
+            </label>
+        </div>
+    </section>
+
+    <section class="mt-5 overflow-hidden rounded-xl border border-line bg-surface">
+        <div class="flex items-center justify-between gap-6 border-b border-line px-5 py-4">
+            <div>
+                <h2 class="font-medium">Equalizer</h2>
+                <p class="mt-1 text-xs text-muted">Klangprofil mit Vorverstärkung und @Equalizer.Bands.Count Frequenzbändern.</p>
+            </div>
+            <label class="relative inline-flex cursor-pointer items-center">
+                <input type="checkbox" class="peer sr-only" checked="@Equalizer.Enabled" @onchange="OnEqualizerEnabled" />
+                <span class="h-6 w-11 rounded-full bg-surface-2 transition peer-checked:bg-accent"></span>
+                <span class="absolute left-1 h-4 w-4 rounded-full bg-white transition peer-checked:translate-x-5"></span>
+            </label>
+        </div>
+        <div class="space-y-5 px-5 py-5 @(!Equalizer.Enabled ? "opacity-50" : "")">
+            <label class="block">
+                <span class="text-xs uppercase tracking-wide text-muted">Klangprofil</span>
+                <select value="@Equalizer.PresetIndex" @onchange="OnEqualizerPreset" disabled="@(!Equalizer.Enabled)"
+                        class="mt-2 w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent disabled:opacity-50">
+                    @if (Equalizer.PresetIndex < 0)
+                    {
+                        <option value="-1">Benutzerdefiniert</option>
+                    }
+                    @foreach (var preset in Equalizer.Presets)
+                    {
+                        <option value="@preset.Index">@preset.Name</option>
+                    }
+                </select>
+            </label>
+
+            <div class="grid gap-4 md:grid-cols-2">
+                <div class="rounded-lg bg-canvas p-4">
+                    <div class="mb-2 flex items-center justify-between text-xs">
+                        <span class="text-muted">Vorverstärkung</span>
+                        <span class="tabular-nums text-ink">@FormatDb(Equalizer.Preamp)</span>
+                    </div>
+                    <input type="range" class="elyra-range w-full" min="-20" max="20" step="0.1"
+                           value="@Invariant(Equalizer.Preamp)" disabled="@(!Equalizer.Enabled)" @onchange="OnEqualizerPreamp" />
+                </div>
+                @for (var index = 0; index < Equalizer.Bands.Count; index++)
+                {
+                    var bandIndex = index;
+                    <div class="rounded-lg bg-canvas p-4">
+                        <div class="mb-2 flex items-center justify-between text-xs">
+                            <span class="text-muted">@FormatFrequency(Equalizer.Frequencies[bandIndex])</span>
+                            <span class="tabular-nums text-ink">@FormatDb(Equalizer.Bands[bandIndex])</span>
+                        </div>
+                        <input type="range" class="elyra-range w-full" min="-20" max="20" step="0.1"
+                               value="@Invariant(Equalizer.Bands[bandIndex])" disabled="@(!Equalizer.Enabled)"
+                               @onchange="args => OnEqualizerBand(bandIndex, args)" />
+                    </div>
+                }
+            </div>
+        </div>
+    </section>
+
+    <section class="mt-5 overflow-hidden rounded-xl border border-line bg-surface">
+        <div class="border-b border-line px-5 py-4">
+            <h2 class="font-medium">Bibliotheksprüfung</h2>
+            <p class="mt-1 text-xs text-muted">Findet fehlende Dateien und mögliche Dubletten anhand von Künstler, Titel und Spieldauer.</p>
+        </div>
+        <div class="space-y-4 px-5 py-5">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <div class="text-sm text-muted">Der Mediathek-Index wird performant in SQLite gespeichert.</div>
+                <button @onclick="AnalyzeLibraryAsync" disabled="@(_isAnalyzing || Library.Tracks.Count == 0)"
+                        class="rounded-full bg-surface-2 px-4 py-2 text-sm text-ink hover:bg-line disabled:opacity-40">
+                    @(_isAnalyzing ? "Prüft …" : "Mediathek prüfen")
+                </button>
+            </div>
+
+            @if (_healthReport is not null)
+            {
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="rounded-lg bg-canvas p-4">
+                        <div class="text-2xl font-semibold">@_healthReport.MissingFiles.Count</div>
+                        <div class="mt-1 text-xs text-muted">fehlende Dateien</div>
+                    </div>
+                    <div class="rounded-lg bg-canvas p-4">
+                        <div class="text-2xl font-semibold">@_healthReport.PossibleDuplicates.Count</div>
+                        <div class="mt-1 text-xs text-muted">mögliche Dublettengruppen</div>
+                    </div>
+                </div>
+
+                @if (_healthReport.MissingFiles.Count > 0)
+                {
+                    <button @onclick="RemoveMissingFiles" class="text-sm text-accent hover:underline">Fehlende Einträge aus der Mediathek entfernen</button>
+                }
+
+                @if (_healthReport.PossibleDuplicates.Count > 0)
+                {
+                    <details class="rounded-lg border border-line bg-canvas px-4 py-3">
+                        <summary class="cursor-pointer text-sm font-medium">Dublettengruppen anzeigen</summary>
+                        <div class="mt-3 space-y-3">
+                            @foreach (var duplicate in _healthReport.PossibleDuplicates.Take(20))
+                            {
+                                <div>
+                                    <div class="text-sm text-ink">@duplicate.Label</div>
+                                    @foreach (var track in duplicate.Tracks)
+                                    {
+                                        <div class="mt-1 truncate text-xs text-muted" title="@track.FilePath">@track.FilePath</div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </details>
+                }
+            }
         </div>
     </section>
 
@@ -126,6 +283,8 @@
     private string? _message;
     private bool _isError;
     private bool _isEnriching;
+    private bool _isAnalyzing;
+    private LibraryHealthReport? _healthReport;
     private string? _metadataMessage;
     private MetadataEnrichmentProgress? _metadataProgress;
     private CancellationTokenSource? _metadataCancellation;
@@ -138,9 +297,14 @@
             : 0)
         .ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
 
-    protected override void OnInitialized() => Library.Changed += OnLibraryChanged;
+    protected override void OnInitialized()
+    {
+        Library.Changed += OnLibraryChanged;
+        PlaybackPreferences.Changed += OnPlaybackPreferencesChanged;
+    }
 
     private void OnLibraryChanged(object? sender, EventArgs e) => InvokeAsync(StateHasChanged);
+    private void OnPlaybackPreferencesChanged(object? sender, EventArgs e) => InvokeAsync(StateHasChanged);
 
     private async Task ChooseFolderAsync()
     {
@@ -176,6 +340,26 @@
     {
         Library.Clear();
         SetMessage("Gespeicherte Mediathek wurde entfernt.");
+    }
+
+    private async Task AnalyzeLibraryAsync()
+    {
+        _isAnalyzing = true;
+        try
+        {
+            _healthReport = await LibraryHealth.AnalyzeAsync(Library.Tracks);
+        }
+        finally
+        {
+            _isAnalyzing = false;
+        }
+    }
+
+    private void RemoveMissingFiles()
+    {
+        Library.RemoveMissingFiles();
+        _healthReport = null;
+        SetMessage("Fehlende Einträge wurden entfernt.");
     }
 
     private async Task EnrichMetadataAsync()
@@ -224,11 +408,70 @@
         }
     }
 
+    private void OnGaplessChanged(ChangeEventArgs e) =>
+        PlaybackPreferences.GaplessEnabled = e.Value is true;
+
+    private void OnNormalizeVolumeChanged(ChangeEventArgs e) =>
+        PlaybackPreferences.NormalizeVolume = e.Value is true;
+
+    private void OnCrossfade(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var seconds))
+            PlaybackPreferences.CrossfadeSeconds = seconds;
+    }
+
+    private void OnEqualizerEnabled(ChangeEventArgs e) =>
+        Equalizer.SetEnabled(e.Value is true);
+
+    private void OnEqualizerPreset(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var index) && index >= 0)
+            Equalizer.SelectPreset(index);
+    }
+
+    private void OnEqualizerPreamp(ChangeEventArgs e)
+    {
+        if (TryParseFloat(e, out var value))
+            Equalizer.SetPreamp(value);
+    }
+
+    private void OnEqualizerBand(int index, ChangeEventArgs e)
+    {
+        if (TryParseFloat(e, out var value))
+            Equalizer.SetBand(index, value);
+    }
+
+    private static bool TryParseFloat(ChangeEventArgs e, out float value) =>
+        float.TryParse(
+            e.Value?.ToString(),
+            System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out value);
+
+    private static string Invariant(float value) =>
+        value.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture);
+
+    private static string FormatDb(float value) => $"{value:+0.0;-0.0;0.0} dB";
+
+    private static string FormatFrequency(float value) => value >= 1000
+        ? $"{value / 1000:0.#} kHz"
+        : $"{value:0} Hz";
+
     private string VolumeStyle
     {
         get
         {
             var value = Playback.Volume.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            return $"background:linear-gradient(to right, var(--color-accent) {value}%, var(--color-surface-2) {value}%)";
+        }
+    }
+
+    private string CrossfadeStyle
+    {
+        get
+        {
+            var percent = PlaybackPreferences.CrossfadeSeconds / 12d * 100;
+            var value = percent.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
             return $"background:linear-gradient(to right, var(--color-accent) {value}%, var(--color-surface-2) {value}%)";
         }
     }
@@ -242,6 +485,7 @@
     public void Dispose()
     {
         Library.Changed -= OnLibraryChanged;
+        PlaybackPreferences.Changed -= OnPlaybackPreferencesChanged;
         _metadataCancellation?.Cancel();
         _metadataCancellation?.Dispose();
     }

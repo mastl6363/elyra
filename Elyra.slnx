@@ -1,9 +1,6 @@
 <Solution>
   <Folder Name="/src/">
-    <Project Path="src/Elyra/Elyra.csproj">
-      <Configuration Solution="*|*" Project="*|*|Deploy" />
-      <Deploy />
-    </Project>
+    <Project Path="src/Elyra/Elyra.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Elyra.Tests/Elyra.Tests.csproj" />

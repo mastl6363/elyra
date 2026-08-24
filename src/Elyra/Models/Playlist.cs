@@ -23,6 +23,8 @@ public sealed class PlaylistEntry
     public string Title { get; set; } = "";
     public string Artist { get; set; } = "";
     public string Album { get; set; } = "";
+    public string Genre { get; set; } = "";
+    public uint Year { get; set; }
     public long DurationMs { get; set; }
 
     public static PlaylistEntry FromTrack(Track t) => new()
@@ -31,6 +33,8 @@ public sealed class PlaylistEntry
         Title = t.Title,
         Artist = t.Artist,
         Album = t.Album,
+        Genre = t.Genre,
+        Year = t.Year,
         DurationMs = (long)t.Duration.TotalMilliseconds
     };
 
@@ -40,6 +44,8 @@ public sealed class PlaylistEntry
         Title = Title,
         Artist = Artist,
         Album = Album,
+        Genre = Genre,
+        Year = Year,
         Duration = TimeSpan.FromMilliseconds(DurationMs)
     };
 }

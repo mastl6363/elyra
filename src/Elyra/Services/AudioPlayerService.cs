@@ -4,95 +4,337 @@ using LibVLCSharp.Shared;
 namespace Elyra.Services;
 
 /// <summary>
-/// Thin wrapper around LibVLCSharp that drives playback of local audio files
-/// (MP3, FLAC, …). Framework-agnostic on purpose — the Razor UI subscribes to
-/// the events and calls the methods, but this type knows nothing about Blazor.
-/// Registered as a singleton; there is exactly one player per app session.
+/// Native LibVLC playback engine. Two players share one LibVLC instance so the
+/// next local track can start before the current one stops.
 /// </summary>
-public sealed class AudioPlayerService : IDisposable
+public sealed class AudioPlayerService : IAudioPlayerService, IDisposable
 {
     private readonly LibVLC _libVLC;
-    private readonly MediaPlayer _player;
+    private readonly MediaPlayer[] _players;
+    private readonly EqualizerService _equalizer;
+    private readonly string[] _sources = ["", ""];
+    private readonly object _transitionSync = new();
+    private CancellationTokenSource? _transitionCancellation;
+    private int _activeIndex;
+    private int _masterVolume = 100;
+    private long _pendingStartPositionMs = -1;
+    private int _isPlaying;
+    private volatile bool _transitionActive;
+    private bool _disposed;
 
-    public AudioPlayerService()
+    public AudioPlayerService(PlaybackPreferencesService preferences, EqualizerService equalizer)
     {
-        // Core.Initialize() must already have run (see MauiProgram).
-        _libVLC = new LibVLC();
-        _player = new MediaPlayer(_libVLC);
+        _equalizer = equalizer;
+        // The normalizer is a LibVLC start-up filter. Changing the preference
+        // therefore deliberately takes effect on the next application start.
+        _libVLC = preferences.NormalizeVolume
+            ? new LibVLC("--audio-filter=normvol", "--norm-max-level=2.0")
+            : new LibVLC();
 
-        _player.Playing     += (_, _) => StateChanged?.Invoke(this, EventArgs.Empty);
-        _player.Paused      += (_, _) => StateChanged?.Invoke(this, EventArgs.Empty);
-        _player.Stopped     += (_, _) => StateChanged?.Invoke(this, EventArgs.Empty);
-        _player.EndReached  += (_, _) => TrackEnded?.Invoke(this, EventArgs.Empty);
-        _player.TimeChanged += (_, e) => PositionChanged?.Invoke(this, TimeSpan.FromMilliseconds(e.Time));
+        _players = [new MediaPlayer(_libVLC), new MediaPlayer(_libVLC)];
+        foreach (var player in _players)
+        {
+            player.Playing += OnPlaying;
+            player.Paused += OnPaused;
+            player.Stopped += OnStopped;
+            player.EndReached += OnEndReached;
+            player.EncounteredError += OnEncounteredError;
+            player.TimeChanged += OnTimeChanged;
+        }
+        _equalizer.AttachPlayers(_players);
     }
 
-    /// <summary>Fires when play/pause/stop state flips.</summary>
     public event EventHandler? StateChanged;
-
-    /// <summary>Fires roughly every ~250 ms while playing, with the new position.</summary>
     public event EventHandler<TimeSpan>? PositionChanged;
-
-    /// <summary>Fires when the current track plays to its end (for auto-advance).</summary>
     public event EventHandler? TrackEnded;
+    public event EventHandler<PlaybackFailedEventArgs>? PlaybackFailed;
 
-    public bool IsPlaying => _player.IsPlaying;
-    public MediaPlayer MediaPlayer => _player;
+    private MediaPlayer ActivePlayer => _players[_activeIndex];
+    public bool IsPlaying => Volatile.Read(ref _isPlaying) == 1;
 
-    /// <summary>Current playback position.</summary>
-    public TimeSpan Position => TimeSpan.FromMilliseconds(_player.Time < 0 ? 0 : _player.Time);
+    /// <summary>
+    /// The video view is permanently bound to the primary player. PlayVideo
+    /// switches playback back to that player before loading a video.
+    /// </summary>
+    public MediaPlayer MediaPlayer => _players[0];
 
-    /// <summary>Total length of the loaded track (0 if unknown/not loaded).</summary>
-    public TimeSpan Duration => TimeSpan.FromMilliseconds(_player.Length < 0 ? 0 : _player.Length);
+    public TimeSpan Position =>
+        TimeSpan.FromMilliseconds(ActivePlayer.Time < 0 ? 0 : ActivePlayer.Time);
 
-    /// <summary>Volume in the range 0–100. LibVLC reports -1 before media loads.</summary>
+    public TimeSpan Duration =>
+        TimeSpan.FromMilliseconds(ActivePlayer.Length < 0 ? 0 : ActivePlayer.Length);
+
     public int Volume
     {
-        get => _player.Volume < 0 ? 100 : _player.Volume;
-        set => _player.Volume = Math.Clamp(value, 0, 100);
+        get => _masterVolume;
+        set
+        {
+            _masterVolume = Math.Clamp(value, 0, 100);
+            if (!_transitionActive)
+                ActivePlayer.Volume = _masterVolume;
+        }
     }
 
-    /// <summary>Loads and starts playing a local file path.</summary>
-    public void Play(string filePath)
+    public void Play(string filePath, TimeSpan? startPosition = null)
     {
-        using var media = new Media(_libVLC, filePath, FromType.FromPath);
-        _player.Play(media);
+        CancelTransition();
+        Interlocked.Exchange(
+            ref _pendingStartPositionMs,
+            startPosition is { } value && value > TimeSpan.Zero
+                ? (long)value.TotalMilliseconds
+                : -1);
+        PlayOn(ActivePlayer, filePath, FromType.FromPath);
     }
 
-    /// <summary>Loads and starts an HTTP(S) radio stream.</summary>
     public void PlayLocation(string url)
     {
-        using var media = new Media(_libVLC, url, FromType.FromLocation);
-        _player.Play(media);
+        CancelTransition();
+        Interlocked.Exchange(ref _pendingStartPositionMs, -1);
+        PlayOn(ActivePlayer, url, FromType.FromLocation);
     }
 
     public void PlayVideo(VideoItem video)
     {
+        CancelTransition();
+        SwitchToPrimaryPlayer();
         if (video.Kind == VideoSourceKind.Dvd)
-            PlayLocation(video.PlaybackLocation);
+            PlayOn(ActivePlayer, video.PlaybackLocation, FromType.FromLocation);
         else
-            Play(video.Source);
+            PlayOn(ActivePlayer, video.Source, FromType.FromPath);
+    }
+
+    public async Task<bool> CrossfadeToAsync(
+        string filePath,
+        TimeSpan duration,
+        CancellationToken cancellationToken = default)
+    {
+        if (duration <= TimeSpan.Zero || string.IsNullOrWhiteSpace(filePath))
+            return false;
+
+        CancellationTokenSource transitionCancellation;
+        lock (_transitionSync)
+        {
+            _transitionCancellation?.Cancel();
+            _transitionCancellation?.Dispose();
+            _transitionCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            transitionCancellation = _transitionCancellation;
+            _transitionActive = true;
+        }
+
+        var sourceIndex = _activeIndex;
+        var targetIndex = sourceIndex == 0 ? 1 : 0;
+        var source = _players[sourceIndex];
+        var target = _players[targetIndex];
+        var token = transitionCancellation.Token;
+
+        try
+        {
+            target.Stop();
+            target.Volume = 0;
+            PlayOn(target, filePath, FromType.FromPath);
+
+            // LibVLC starts asynchronously. Do not fade out the current track
+            // until the target player has actually begun playback.
+            var readyUntil = DateTime.UtcNow + TimeSpan.FromSeconds(2);
+            while (!target.IsPlaying && DateTime.UtcNow < readyUntil)
+            {
+                token.ThrowIfCancellationRequested();
+                await Task.Delay(20, token).ConfigureAwait(false);
+            }
+
+            if (!target.IsPlaying)
+                return false;
+
+            var totalMilliseconds = Math.Max(1, duration.TotalMilliseconds);
+            var steps = Math.Clamp((int)Math.Ceiling(totalMilliseconds / 40), 3, 300);
+            var delay = TimeSpan.FromMilliseconds(totalMilliseconds / steps);
+            for (var step = 1; step <= steps; step++)
+            {
+                token.ThrowIfCancellationRequested();
+                var progress = (double)step / steps;
+                var volume = _masterVolume;
+                source.Volume = (int)Math.Round(volume * (1 - progress));
+                target.Volume = (int)Math.Round(volume * progress);
+                await Task.Delay(delay, token).ConfigureAwait(false);
+            }
+
+            _activeIndex = targetIndex;
+            Volatile.Write(ref _isPlaying, 1);
+            target.Volume = _masterVolume;
+            source.Stop();
+            StateChanged?.Invoke(this, EventArgs.Empty);
+            PositionChanged?.Invoke(this, Position);
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
+        finally
+        {
+            if (_activeIndex == sourceIndex)
+            {
+                target.Stop();
+                source.Volume = _masterVolume;
+            }
+
+            lock (_transitionSync)
+            {
+                if (ReferenceEquals(_transitionCancellation, transitionCancellation))
+                {
+                    _transitionCancellation.Dispose();
+                    _transitionCancellation = null;
+                    _transitionActive = false;
+                }
+            }
+        }
+    }
+
+    public void CancelTransition()
+    {
+        CancellationTokenSource? cancellation;
+        lock (_transitionSync)
+        {
+            cancellation = _transitionCancellation;
+            _transitionCancellation = null;
+            _transitionActive = false;
+        }
+
+        cancellation?.Cancel();
+        cancellation?.Dispose();
+        ActivePlayer.Volume = _masterVolume;
     }
 
     public void Pause()
     {
-        if (_player.CanPause)
-            _player.SetPause(true);
+        CancelTransition();
+        if (ActivePlayer.CanPause)
+        {
+            Volatile.Write(ref _isPlaying, 0);
+            ActivePlayer.SetPause(true);
+            StateChanged?.Invoke(this, EventArgs.Empty);
+        }
     }
 
-    public void Resume() => _player.SetPause(false);
+    public void Resume()
+    {
+        Volatile.Write(ref _isPlaying, 1);
+        ActivePlayer.SetPause(false);
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
 
-    /// <summary>Toggles between play and pause for the loaded track.</summary>
-    public void TogglePlayPause() => _player.Pause();
+    public void TogglePlayPause()
+    {
+        if (IsPlaying)
+            Pause();
+        else
+            Resume();
+    }
 
-    public void Stop() => _player.Stop();
+    public void Stop()
+    {
+        CancelTransition();
+        ActivePlayer.Stop();
+    }
 
-    /// <summary>Seeks to an absolute position within the current track.</summary>
-    public void Seek(TimeSpan position) => _player.Time = (long)position.TotalMilliseconds;
+    public void Seek(TimeSpan position)
+    {
+        CancelTransition();
+        ActivePlayer.Time = (long)position.TotalMilliseconds;
+    }
+
+    private void PlayOn(MediaPlayer player, string source, FromType fromType)
+    {
+        _sources[Array.IndexOf(_players, player)] = source;
+        player.Volume = _masterVolume;
+        using var media = new Media(_libVLC, source, fromType);
+        if (!player.Play(media) && IsActiveSender(player))
+            _ = Task.Run(() => PlaybackFailed?.Invoke(
+                this,
+                new PlaybackFailedEventArgs(source)));
+    }
+
+    private void SwitchToPrimaryPlayer()
+    {
+        if (_activeIndex == 0)
+            return;
+
+        _players[1].Stop();
+        _activeIndex = 0;
+        _players[0].Volume = _masterVolume;
+    }
+
+    private bool IsActiveSender(object? sender) => ReferenceEquals(sender, ActivePlayer);
+
+    private void OnPlaying(object? sender, EventArgs args)
+    {
+        if (!IsActiveSender(sender))
+            return;
+
+        Volatile.Write(ref _isPlaying, 1);
+
+        var position = Interlocked.Exchange(ref _pendingStartPositionMs, -1);
+        if (position >= 0)
+        {
+            var player = ActivePlayer;
+            _ = Task.Run(() => player.Time = position);
+        }
+
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void OnPaused(object? sender, EventArgs args) => SetNotPlaying(sender);
+
+    private void OnStopped(object? sender, EventArgs args) => SetNotPlaying(sender);
+
+    private void SetNotPlaying(object? sender)
+    {
+        if (!IsActiveSender(sender))
+            return;
+
+        Volatile.Write(ref _isPlaying, 0);
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void OnEndReached(object? sender, EventArgs args)
+    {
+        if (!IsActiveSender(sender))
+            return;
+
+        Volatile.Write(ref _isPlaying, 0);
+        StateChanged?.Invoke(this, EventArgs.Empty);
+        if (!_transitionActive)
+            TrackEnded?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void OnEncounteredError(object? sender, EventArgs args)
+    {
+        if (!IsActiveSender(sender))
+            return;
+
+        Volatile.Write(ref _isPlaying, 0);
+        StateChanged?.Invoke(this, EventArgs.Empty);
+
+        var index = Array.IndexOf(_players, sender);
+        var source = index >= 0 ? _sources[index] : "";
+        PlaybackFailed?.Invoke(this, new PlaybackFailedEventArgs(source));
+    }
+
+    private void OnTimeChanged(object? sender, MediaPlayerTimeChangedEventArgs args)
+    {
+        if (IsActiveSender(sender))
+            PositionChanged?.Invoke(this, TimeSpan.FromMilliseconds(args.Time));
+    }
 
     public void Dispose()
     {
-        _player.Dispose();
+        if (_disposed)
+            return;
+        _disposed = true;
+        CancelTransition();
+        _equalizer.DetachPlayers();
+        foreach (var player in _players)
+            player.Dispose();
         _libVLC.Dispose();
     }
 }

@@ -23,6 +23,13 @@
     </div>
 
     <script src="_framework/blazor.webview.js" autostart="false"></script>
+    <script>
+        window.elyra = {
+            scrollLyric: function (id) {
+                document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "center" });
+            }
+        };
+    </script>
 
 </body>
 
