@@ -127,7 +127,8 @@
 </div>
 
 @code {
-    private readonly CancellationTokenSource _cancellation = new();
+    private readonly CancellationTokenSource _lifetime = new();
+    private CancellationTokenSource _searchCancellation = new();
     private IReadOnlyList<RadioStation> _stations = [];
     private string _query = "";
     private string _countryCode = "DE";
@@ -154,21 +155,32 @@
 
     private async Task SearchAsync()
     {
+        // Cancel any still-running search so its result can never overwrite a
+        // newer one (e.g. typing "jazz" then immediately clicking "Rock").
+        _searchCancellation.Cancel();
+        _searchCancellation.Dispose();
+        var cancellation = _searchCancellation = new CancellationTokenSource();
+
         _isLoading = true;
         _error = null;
         try
         {
-            _stations = await RadioBrowser.SearchAsync(_query, _countryCode, _cancellation.Token);
+            var stations = await RadioBrowser.SearchAsync(_query, _countryCode, cancellation.Token);
+            if (cancellation.IsCancellationRequested) return;
+            _stations = stations;
         }
-        catch (OperationCanceledException) when (_cancellation.IsCancellationRequested) { }
+        catch (OperationCanceledException)
+        {
+        }
         catch (Exception exception)
         {
+            if (cancellation.IsCancellationRequested) return;
             _error = exception.Message;
             _stations = [];
         }
         finally
         {
-            _isLoading = false;
+            if (!cancellation.IsCancellationRequested) _isLoading = false;
         }
     }
 
@@ -181,7 +193,7 @@
     private async Task PlayAsync(RadioStation station)
     {
         Playback.PlayRadio(station);
-        await RadioBrowser.RecordClickAsync(station.StationUuid, _cancellation.Token);
+        await RadioBrowser.RecordClickAsync(station.StationUuid, _lifetime.Token);
     }
 
     private async Task OnSearchKey(KeyboardEventArgs args)
@@ -196,7 +208,9 @@
     {
         Favorites.Changed -= OnFavoritesChanged;
         Playback.CurrentChanged -= OnPlaybackChanged;
-        _cancellation.Cancel();
-        _cancellation.Dispose();
+        _searchCancellation.Cancel();
+        _searchCancellation.Dispose();
+        _lifetime.Cancel();
+        _lifetime.Dispose();
     }
 }

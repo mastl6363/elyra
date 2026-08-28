@@ -26,6 +26,11 @@
         </button>
     </header>
 
+    @if (_importError is not null)
+    {
+        <p class="mt-3 text-sm text-red-400">@_importError</p>
+    }
+
     @if (Library.IsScanning)
     {
         <div class="mt-24 flex flex-col items-center justify-center text-center text-muted">
@@ -125,6 +130,7 @@
     private bool _sortByTrackCount;
     private string _searchText = "";
     private AudioFileFilter _fileFilter = AudioFileFilter.All;
+    private string? _importError;
 
     private static readonly (AudioFileFilter Value, string Label)[] FormatOptions =
     [
@@ -152,9 +158,17 @@
 
     private async Task ImportAsync()
     {
-        var folder = await FolderPicker.PickFolderAsync();
-        if (!string.IsNullOrEmpty(folder))
-            await Library.ImportFolderAsync(folder);
+        _importError = null;
+        try
+        {
+            var folder = await FolderPicker.PickFolderAsync();
+            if (!string.IsNullOrEmpty(folder))
+                await Library.ImportFolderAsync(folder);
+        }
+        catch (Exception ex)
+        {
+            _importError = ex.Message;
+        }
     }
 
     private void ResetFilters()

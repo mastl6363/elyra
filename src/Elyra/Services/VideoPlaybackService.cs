@@ -29,8 +29,19 @@ public sealed class VideoPlaybackService
             throw new InvalidOperationException("Das Elyra-Hauptfenster ist nicht verfügbar.");
 
         _isOpen = true;
-        var page = new VideoPlayerPage(_audio, _playback, _library, video);
-        page.Disappearing += (_, _) => _isOpen = false;
-        await rootPage.Navigation.PushModalAsync(page, false);
+        try
+        {
+            var page = new VideoPlayerPage(_audio, _playback, _library, video);
+            page.Disappearing += (_, _) => _isOpen = false;
+            await rootPage.Navigation.PushModalAsync(page, false);
+        }
+        catch
+        {
+            // Page construction or the modal push failed before Disappearing could
+            // ever fire to reset the flag — without this, video playback would be
+            // permanently locked out for the rest of the app session.
+            _isOpen = false;
+            throw;
+        }
     });
 }

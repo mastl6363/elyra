@@ -8,6 +8,10 @@ namespace Elyra.Services;
 /// </summary>
 public sealed class PlaybackService
 {
+    // Guards _queue/_order: Next()/Previous() can be called from the UI thread
+    // (button click) at the same time TrackEnded fires and hops onto a thread-pool
+    // thread, and both paths read-then-mutate PlaybackOrder's internal state.
+    private readonly object _sync = new();
     private readonly AudioPlayerService _audio;
     private readonly PlaybackOrder _order = new();
     private List<Track> _queue = new();
@@ -18,6 +22,9 @@ public sealed class PlaybackService
         // EndReached fires on a LibVLC callback thread — never call back into LibVLC
         // from there (it can deadlock), so hop onto the thread pool before advancing.
         _audio.TrackEnded += (_, _) => Task.Run(Next);
+        // A missing/deleted file (e.g. a stale playlist entry) must not leave
+        // "now playing" stuck forever — skip it like a track that ended.
+        _audio.PlaybackFailed += (_, _) => Task.Run(Next);
     }
 
     public IReadOnlyList<Track> Queue => _queue;
@@ -43,11 +50,17 @@ public sealed class PlaybackService
 
     public void Play(IEnumerable<Track> tracks, int startIndex = 0)
     {
-        CurrentStation = null;
-        CurrentVideo = null;
-        _queue = tracks.ToList();
-        _order.Reset(_queue.Count, startIndex);
-        if (_queue.Count == 0)
+        bool hasTracks;
+        lock (_sync)
+        {
+            CurrentStation = null;
+            CurrentVideo = null;
+            _queue = tracks.ToList();
+            _order.Reset(_queue.Count, startIndex);
+            hasTracks = _queue.Count > 0;
+        }
+
+        if (!hasTracks)
         {
             CurrentChanged?.Invoke(this, EventArgs.Empty);
             return;
@@ -57,20 +70,26 @@ public sealed class PlaybackService
 
     public void PlayRadio(RadioStation station)
     {
-        _queue = [];
-        _order.Reset(0, 0);
-        CurrentStation = station;
-        CurrentVideo = null;
+        lock (_sync)
+        {
+            _queue = [];
+            _order.Reset(0, 0);
+            CurrentStation = station;
+            CurrentVideo = null;
+        }
         _audio.PlayLocation(station.StreamUrl);
         CurrentChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public void PlayVideo(VideoItem video)
     {
-        _queue = [];
-        _order.Reset(0, 0);
-        CurrentStation = null;
-        CurrentVideo = video;
+        lock (_sync)
+        {
+            _queue = [];
+            _order.Reset(0, 0);
+            CurrentStation = null;
+            CurrentVideo = video;
+        }
         _audio.PlayVideo(video);
         CurrentChanged?.Invoke(this, EventArgs.Empty);
     }
@@ -85,14 +104,19 @@ public sealed class PlaybackService
 
     private void StartCurrentTrack()
     {
-        if (CurrentIndex < 0 || CurrentIndex >= _queue.Count) return;
-        _audio.Play(_queue[CurrentIndex].FilePath);
+        string? filePath;
+        lock (_sync)
+        {
+            if (CurrentIndex < 0 || CurrentIndex >= _queue.Count) return;
+            filePath = _queue[CurrentIndex].FilePath;
+        }
+        _audio.Play(filePath);
         CurrentChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public void ToggleShuffle()
     {
-        _order.ToggleShuffle();
+        lock (_sync) _order.ToggleShuffle();
         CurrentChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -104,8 +128,14 @@ public sealed class PlaybackService
 
     public void Next()
     {
-        if (CurrentStation is not null || CurrentVideo is not null) return;
-        if (_order.TryMoveNext(out _))
+        bool moved;
+        lock (_sync)
+        {
+            if (CurrentStation is not null || CurrentVideo is not null) return;
+            moved = _order.TryMoveNext(out _);
+        }
+
+        if (moved)
             StartCurrentTrack();
         else
             _audio.Stop();
@@ -113,12 +143,21 @@ public sealed class PlaybackService
 
     public void Previous()
     {
-        if (CurrentStation is not null || CurrentVideo is not null) return;
+        lock (_sync)
+            if (CurrentStation is not null || CurrentVideo is not null) return;
+
         // Restart the current track if we're more than 3s in (or it's the first one),
         // otherwise step back to the previous track.
         if (_audio.Position.TotalSeconds > 3)
+        {
             _audio.Seek(TimeSpan.Zero);
-        else if (_order.TryMovePrevious(out _))
+            return;
+        }
+
+        bool moved;
+        lock (_sync) moved = _order.TryMovePrevious(out _);
+
+        if (moved)
             StartCurrentTrack();
         else
             _audio.Seek(TimeSpan.Zero);

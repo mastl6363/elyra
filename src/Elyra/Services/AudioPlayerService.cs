@@ -36,6 +36,9 @@ public sealed class AudioPlayerService : IDisposable
     /// <summary>Fires when the current track plays to its end (for auto-advance).</summary>
     public event EventHandler? TrackEnded;
 
+    /// <summary>Fires when a requested local file no longer exists (e.g. a stale playlist entry).</summary>
+    public event EventHandler? PlaybackFailed;
+
     public bool IsPlaying => _player.IsPlaying;
     public MediaPlayer MediaPlayer => _player;
 
@@ -55,6 +58,15 @@ public sealed class AudioPlayerService : IDisposable
     /// <summary>Loads and starts playing a local file path.</summary>
     public void Play(string filePath)
     {
+        // A track can reference a file that was deleted or moved since it was added
+        // to a playlist/library snapshot. Without this check, LibVLC fails to open
+        // it asynchronously and playback silently gets stuck on the dead track.
+        if (!File.Exists(filePath))
+        {
+            PlaybackFailed?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+
         using var media = new Media(_libVLC, filePath, FromType.FromPath);
         _player.Play(media);
     }

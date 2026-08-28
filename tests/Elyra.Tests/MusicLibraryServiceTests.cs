@@ -69,6 +69,28 @@ public sealed class MusicLibraryServiceTests
     }
 
     [Fact]
+    public void Albums_DoNotCollideAcrossDifferentArtistAlbumPairs()
+    {
+        // "Boy" + "George Live" and "Boy George" + "Live" must not merge into one
+        // album just because their AlbumKey happens to concatenate to the same text.
+        var store = new InMemoryStateStore
+        {
+            State = new LibraryState
+            {
+                Tracks =
+                [
+                    Track("Song A", "Boy", "George Live"),
+                    Track("Song B", "Boy George", "Live")
+                ]
+            }
+        };
+
+        var library = new MusicLibraryService(store);
+
+        Assert.Equal(2, library.Albums.Count);
+    }
+
+    [Fact]
     public void Constructor_MigratesLegacyUnknownAlbumPlaceholder()
     {
         var store = new InMemoryStateStore

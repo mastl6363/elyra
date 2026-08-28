@@ -129,7 +129,12 @@ public sealed class VideoLibraryService
         {
             var directory = Path.GetDirectoryName(_filePath);
             if (!string.IsNullOrWhiteSpace(directory)) Directory.CreateDirectory(directory);
-            File.WriteAllText(_filePath, JsonSerializer.Serialize(_videos, JsonOptions));
+
+            // Write-then-rename instead of overwriting in place, so a crash mid-write
+            // can never leave a truncated/corrupt videos/watch-history file behind.
+            var temporaryPath = $"{_filePath}.{Guid.NewGuid():N}.tmp";
+            File.WriteAllText(temporaryPath, JsonSerializer.Serialize(_videos, JsonOptions));
+            File.Move(temporaryPath, _filePath, true);
         }
         catch { }
 

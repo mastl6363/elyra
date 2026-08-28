@@ -42,7 +42,10 @@ public sealed class JsonLibraryStateStore : ILibraryStateStore
             if (!string.IsNullOrEmpty(directory))
                 Directory.CreateDirectory(directory);
 
-            var temporaryPath = _filePath + ".tmp";
+            // A unique suffix (rather than a fixed ".tmp" name) means two overlapping
+            // Save() calls can't collide on the same temp file and make one File.Move
+            // fail while the other's write is silently lost.
+            var temporaryPath = $"{_filePath}.{Guid.NewGuid():N}.tmp";
             File.WriteAllText(temporaryPath, JsonSerializer.Serialize(state, JsonOptions));
             File.Move(temporaryPath, _filePath, true);
         }

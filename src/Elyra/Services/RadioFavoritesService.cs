@@ -49,7 +49,12 @@ public sealed class RadioFavoritesService
         {
             var directory = Path.GetDirectoryName(_filePath);
             if (!string.IsNullOrWhiteSpace(directory)) Directory.CreateDirectory(directory);
-            File.WriteAllText(_filePath, JsonSerializer.Serialize(_favorites, JsonOptions));
+
+            // Write-then-rename instead of overwriting in place, so a crash mid-write
+            // can never leave a truncated/corrupt favorites file behind.
+            var temporaryPath = $"{_filePath}.{Guid.NewGuid():N}.tmp";
+            File.WriteAllText(temporaryPath, JsonSerializer.Serialize(_favorites, JsonOptions));
+            File.Move(temporaryPath, _filePath, true);
         }
         catch
         {

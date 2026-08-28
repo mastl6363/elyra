@@ -14,8 +14,13 @@ public sealed class PlaylistService
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     public PlaylistService()
+        : this(Path.Combine(Microsoft.Maui.Storage.FileSystem.AppDataDirectory, "playlists.json"))
     {
-        _filePath = Path.Combine(Microsoft.Maui.Storage.FileSystem.AppDataDirectory, "playlists.json");
+    }
+
+    public PlaylistService(string filePath)
+    {
+        _filePath = filePath;
         Load();
     }
 
@@ -55,7 +60,10 @@ public sealed class PlaylistService
     {
         var playlist = Find(playlistId);
         if (playlist is null) return;
-        if (playlist.Entries.Any(e => e.FilePath == track.FilePath)) return; // skip duplicates
+        // Windows file paths are case-insensitive; compare the same way MusicLibraryService does
+        // so a re-scanned track with different path casing isn't treated as a different file.
+        if (playlist.Entries.Any(e => string.Equals(e.FilePath, track.FilePath, StringComparison.OrdinalIgnoreCase)))
+            return; // skip duplicates
         playlist.Entries.Add(PlaylistEntry.FromTrack(track));
         Persist();
     }
@@ -64,7 +72,7 @@ public sealed class PlaylistService
     {
         var playlist = Find(playlistId);
         if (playlist is null) return;
-        if (playlist.Entries.RemoveAll(e => e.FilePath == filePath) > 0)
+        if (playlist.Entries.RemoveAll(e => string.Equals(e.FilePath, filePath, StringComparison.OrdinalIgnoreCase)) > 0)
             Persist();
     }
 
@@ -79,7 +87,17 @@ public sealed class PlaylistService
 
     private void Persist()
     {
-        try { File.WriteAllText(_filePath, JsonSerializer.Serialize(_playlists, JsonOptions)); }
+        try
+        {
+            var directory = Path.GetDirectoryName(_filePath);
+            if (!string.IsNullOrWhiteSpace(directory)) Directory.CreateDirectory(directory);
+
+            // Write-then-rename instead of overwriting in place, so a crash mid-write
+            // can never leave a truncated/corrupt playlists file behind.
+            var temporaryPath = $"{_filePath}.{Guid.NewGuid():N}.tmp";
+            File.WriteAllText(temporaryPath, JsonSerializer.Serialize(_playlists, JsonOptions));
+            File.Move(temporaryPath, _filePath, true);
+        }
         catch { /* best-effort persistence */ }
         Changed?.Invoke(this, EventArgs.Empty);
     }
