@@ -25,6 +25,8 @@ public static class MauiProgram
 		// App services
 		builder.Services.AddSingleton<AudioPlayerService>();
 		builder.Services.AddSingleton<PlaybackService>();
+		builder.Services.AddSingleton<PlayHistoryService>();
+		builder.Services.AddSingleton<SuggestionService>();
 		builder.Services.AddSingleton<ILibraryStateStore, JsonLibraryStateStore>();
 		builder.Services.AddSingleton<MusicLibraryService>();
 		builder.Services.AddSingleton<MusicBrainzMetadataService>();

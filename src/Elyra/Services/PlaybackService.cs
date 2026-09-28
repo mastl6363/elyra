@@ -13,12 +13,14 @@ public sealed class PlaybackService
     // thread, and both paths read-then-mutate PlaybackOrder's internal state.
     private readonly object _sync = new();
     private readonly AudioPlayerService _audio;
+    private readonly PlayHistoryService _history;
     private readonly PlaybackOrder _order = new();
     private List<Track> _queue = new();
 
-    public PlaybackService(AudioPlayerService audio)
+    public PlaybackService(AudioPlayerService audio, PlayHistoryService history)
     {
         _audio = audio;
+        _history = history;
         // EndReached fires on a LibVLC callback thread — never call back into LibVLC
         // from there (it can deadlock), so hop onto the thread pool before advancing.
         _audio.TrackEnded += (_, _) => Task.Run(Next);
@@ -111,6 +113,7 @@ public sealed class PlaybackService
             filePath = _queue[CurrentIndex].FilePath;
         }
         _audio.Play(filePath);
+        _history.RecordPlay(filePath);
         CurrentChanged?.Invoke(this, EventArgs.Empty);
     }
 

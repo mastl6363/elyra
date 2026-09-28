@@ -60,6 +60,30 @@ public static class LibraryFilter
         }).ToList();
     }
 
+    public static IReadOnlyList<Genre> Apply(
+        IEnumerable<Genre> genres,
+        string? searchText,
+        AudioFileFilter fileFilter)
+    {
+        var query = searchText?.Trim();
+
+        return genres.Where(genre =>
+        {
+            var matchingTracks = genre.Tracks.Where(track => MatchesFormat(track, fileFilter));
+            if (!matchingTracks.Any())
+                return false;
+
+            if (string.IsNullOrEmpty(query))
+                return true;
+
+            return Contains(genre.Name, query)
+                || matchingTracks.Any(track =>
+                    Contains(track.Title, query)
+                    || Contains(track.Artist, query)
+                    || Contains(track.Album, query));
+        }).ToList();
+    }
+
     private static bool Contains(string value, string query) =>
         value.Contains(query, StringComparison.CurrentCultureIgnoreCase);
 

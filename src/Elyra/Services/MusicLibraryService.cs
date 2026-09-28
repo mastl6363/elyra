@@ -64,6 +64,31 @@ public sealed class MusicLibraryService
         .OrderBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase)
         .ToList();
 
+    /// <summary>All tracks with a genre tag, grouped by genre.</summary>
+    public IReadOnlyList<Genre> Genres => Tracks
+        .Where(t => !string.IsNullOrWhiteSpace(t.Genre))
+        .GroupBy(t => t.Genre.Trim(), StringComparer.CurrentCultureIgnoreCase)
+        .Select(group =>
+        {
+            var genreTracks = group
+                .OrderBy(t => t.Artist, StringComparer.CurrentCultureIgnoreCase)
+                .ThenBy(t => t.Album, StringComparer.CurrentCultureIgnoreCase)
+                .ThenBy(t => t.DiscNumber)
+                .ThenBy(t => t.TrackNumber)
+                .ToList();
+
+            return new Genre
+            {
+                Id = StableId($"genre\0{group.Key}"),
+                Name = group.Key,
+                CoverArtDataUri = genreTracks.FirstOrDefault(t => t.CoverArtDataUri is not null)?.CoverArtDataUri,
+                Tracks = genreTracks,
+                Albums = BuildAlbums(genreTracks)
+            };
+        })
+        .OrderBy(g => g.Name, StringComparer.CurrentCultureIgnoreCase)
+        .ToList();
+
     private static IReadOnlyList<Album> BuildAlbums(IEnumerable<Track> tracks) => tracks
         .Where(t => !string.IsNullOrWhiteSpace(t.Album))
         .GroupBy(t => t.AlbumKey)
@@ -87,6 +112,8 @@ public sealed class MusicLibraryService
     public Album? FindAlbum(string id) => Albums.FirstOrDefault(a => a.Id == id);
 
     public Artist? FindArtist(string id) => Artists.FirstOrDefault(a => a.Id == id);
+
+    public Genre? FindGenre(string id) => Genres.FirstOrDefault(g => g.Id == id);
 
     private static string StableId(string value) =>
         Convert.ToHexString(System.Security.Cryptography.MD5.HashData(
@@ -204,6 +231,7 @@ public sealed class MusicLibraryService
             Artist = string.IsNullOrWhiteSpace(tag.FirstPerformer) ? "Unbekannter Künstler" : tag.FirstPerformer,
             Album = tag.Album?.Trim() ?? string.Empty,
             AlbumArtist = tag.FirstAlbumArtist ?? string.Empty,
+            Genre = tag.FirstGenre?.Trim() ?? string.Empty,
             TrackNumber = tag.Track,
             DiscNumber = tag.Disc,
             Duration = tfile.Properties?.Duration ?? TimeSpan.Zero,
@@ -228,6 +256,7 @@ public sealed class MusicLibraryService
             Artist = track.Artist,
             Album = album,
             AlbumArtist = albumArtist,
+            Genre = track.Genre,
             TrackNumber = track.TrackNumber,
             DiscNumber = track.DiscNumber,
             Duration = track.Duration,

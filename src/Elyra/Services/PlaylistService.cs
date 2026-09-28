@@ -14,7 +14,7 @@ public sealed class PlaylistService
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     public PlaylistService()
-        : this(Path.Combine(Microsoft.Maui.Storage.FileSystem.AppDataDirectory, "playlists.json"))
+        : this(Path.Combine(AppPaths.DataDirectory, "playlists.json"))
     {
     }
 

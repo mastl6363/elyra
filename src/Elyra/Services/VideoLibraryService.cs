@@ -16,7 +16,7 @@ public sealed class VideoLibraryService
     private readonly List<VideoItem> _videos = [];
 
     public VideoLibraryService()
-        : this(Path.Combine(Microsoft.Maui.Storage.FileSystem.AppDataDirectory, "videos.json")) { }
+        : this(Path.Combine(AppPaths.DataDirectory, "videos.json")) { }
 
     public VideoLibraryService(string filePath)
     {
@@ -27,6 +27,7 @@ public sealed class VideoLibraryService
     public IReadOnlyList<VideoItem> Videos => _videos;
     public event EventHandler? Changed;
 
+#if ANDROID || IOS || MACCATALYST || WINDOWS
     public async Task<int> PickAndAddAsync()
     {
         var fileTypes = new FilePickerFileType(new Dictionary<DevicePlatform, IEnumerable<string>>
@@ -45,6 +46,28 @@ public sealed class VideoLibraryService
 
         return AddFiles(results.Select(result => result?.FullPath).OfType<string>());
     }
+#else
+    public async Task<int> PickAndAddAsync()
+    {
+        var startInfo = new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = "zenity",
+            ArgumentList = { "--file-selection", "--multiple", "--separator=\n", "--title=Filme auswählen" },
+            RedirectStandardOutput = true,
+            UseShellExecute = false
+        };
+
+        using var process = System.Diagnostics.Process.Start(startInfo);
+        if (process is null) return 0;
+
+        var output = await process.StandardOutput.ReadToEndAsync();
+        await process.WaitForExitAsync();
+        if (process.ExitCode != 0) return 0;
+
+        var paths = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        return AddFiles(paths);
+    }
+#endif
 
     public int AddFiles(IEnumerable<string> filePaths)
     {

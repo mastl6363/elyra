@@ -1,5 +1,7 @@
 @page "/playlists"
 @inject PlaylistService PlaylistSvc
+@inject SuggestionService Suggestions
+@inject PlaybackService Playback
 @inject NavigationManager Nav
 @implements IDisposable
 
@@ -15,9 +17,47 @@
         </button>
     </header>
 
+    @{
+        var mostPlayed = Suggestions.MostPlayed(10);
+        var recommended = Suggestions.Recommended(10);
+    }
+
+    @if (mostPlayed.Count > 0)
+    {
+        <section class="mt-8">
+            <div class="mb-3 flex items-end justify-between gap-4">
+                <div>
+                    <h2 class="text-lg font-semibold">Meistgehört</h2>
+                    <p class="mt-0.5 text-xs text-muted">Automatisch erstellt aus deinem Hörverlauf</p>
+                </div>
+                <button @onclick="() => Playback.Play(mostPlayed)" class="rounded-full bg-surface-2 px-4 py-2 text-sm hover:bg-line">Alle abspielen</button>
+            </div>
+            <TrackList Tracks="mostPlayed" ShowAdd="true" />
+        </section>
+    }
+
+    @if (recommended.Count > 0)
+    {
+        <section class="mt-8">
+            <div class="mb-3 flex items-end justify-between gap-4">
+                <div>
+                    <h2 class="text-lg font-semibold">Das könnte dir auch gefallen</h2>
+                    <p class="mt-0.5 text-xs text-muted">Basierend auf Genre und Künstlern deiner meistgehörten Titel</p>
+                </div>
+                <button @onclick="() => Playback.Play(recommended)" class="rounded-full bg-surface-2 px-4 py-2 text-sm hover:bg-line">Alle abspielen</button>
+            </div>
+            <TrackList Tracks="recommended" ShowAdd="true" />
+        </section>
+    }
+
+    @if (mostPlayed.Count > 0 || recommended.Count > 0)
+    {
+        <h2 class="mt-10 border-t border-line pt-8 text-lg font-semibold">Deine Wiedergabelisten</h2>
+    }
+
     @if (PlaylistSvc.Playlists.Count == 0)
     {
-        <div class="mt-20 flex flex-col items-center justify-center text-center">
+        <div class="mt-6 flex flex-col items-center justify-center text-center">
             <div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-surface">
                 <svg class="h-7 w-7 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M3 6h13M3 12h13M3 18h9M17 14v6M14 17h6" />
@@ -50,7 +90,12 @@
 </div>
 
 @code {
-    protected override void OnInitialized() => PlaylistSvc.Changed += OnChanged;
+    protected override void OnInitialized()
+    {
+        PlaylistSvc.Changed += OnChanged;
+        Playback.CurrentChanged += OnChanged;
+    }
+
     private void OnChanged(object? sender, EventArgs e) => InvokeAsync(StateHasChanged);
 
     private void CreateNew()
@@ -61,5 +106,9 @@
 
     private void Open(string id) => Nav.NavigateTo($"/playlist/{id}");
 
-    public void Dispose() => PlaylistSvc.Changed -= OnChanged;
+    public void Dispose()
+    {
+        PlaylistSvc.Changed -= OnChanged;
+        Playback.CurrentChanged -= OnChanged;
+    }
 }

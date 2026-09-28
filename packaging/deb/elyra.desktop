@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Elyra
+GenericName=Musikplayer
+Comment=Moderner, werbefreier Musikplayer für lokale Sammlungen (MP3, FLAC)
+Exec=/usr/bin/elyra
+Icon=elyra
+Terminal=false
+Categories=AudioVideo;Audio;Player;
+StartupWMClass=Elyra

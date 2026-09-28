@@ -14,7 +14,7 @@ public sealed class JsonLibraryStateStore : ILibraryStateStore
     private readonly string _filePath;
 
     public JsonLibraryStateStore()
-        : this(Path.Combine(Microsoft.Maui.Storage.FileSystem.AppDataDirectory, "library.json"))
+        : this(Path.Combine(AppPaths.DataDirectory, "library.json"))
     {
     }
 

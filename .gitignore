@@ -24,6 +24,10 @@ node_modules/.install-stamp
 # Note: wwwroot/css/app.css is the committed Tailwind output. It is regenerated
 # by the MSBuild 'TailwindBuild' target so clean builds work without a prior npm run.
 
+# ── Linux packaging build output (regenerate via packaging/deb/build-deb.sh) ──
+packaging/deb/staging/
+packaging/deb/dist/
+
 # ── OS / Editor ───────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db

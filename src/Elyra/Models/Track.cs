@@ -12,6 +12,7 @@ public sealed class Track
     public required string Artist { get; init; }
     public required string Album { get; init; }
     public string AlbumArtist { get; init; } = "";
+    public string Genre { get; init; } = "";
     public uint TrackNumber { get; init; }
     public uint DiscNumber { get; init; }
     public TimeSpan Duration { get; init; }

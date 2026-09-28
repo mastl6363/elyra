@@ -11,7 +11,7 @@ public sealed class RadioFavoritesService
     private readonly List<RadioStation> _favorites = [];
 
     public RadioFavoritesService()
-        : this(Path.Combine(Microsoft.Maui.Storage.FileSystem.AppDataDirectory, "radio-favorites.json")) { }
+        : this(Path.Combine(AppPaths.DataDirectory, "radio-favorites.json")) { }
 
     public RadioFavoritesService(string filePath)
     {

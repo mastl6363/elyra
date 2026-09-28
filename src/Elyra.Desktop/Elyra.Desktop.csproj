@@ -1,0 +1,56 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <RootNamespace>Elyra</RootNamespace>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <!-- Same app identity as the MAUI project so both land in the same
+             app-data / cache directories (see Services/AppPaths.cs). -->
+        <AssemblyName>Elyra.Desktop</AssemblyName>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="LibVLCSharp" Version="3.9.7.1" />
+        <PackageReference Include="TagLibSharp" Version="2.3.0" />
+    </ItemGroup>
+
+    <!-- Reuse the MAUI project's platform-agnostic Razor UI, models and services
+         instead of duplicating ~2000 lines. Files that need MAUI (App.xaml,
+         MainPage.xaml, VideoPlayerPage.cs, Platforms/**) are intentionally left
+         out; Maui-only code paths inside the shared Services are compiled out
+         here via #if ANDROID || IOS || MACCATALYST || WINDOWS (undefined on
+         this plain net10.0 TFM). -->
+    <ItemGroup>
+        <Compile Include="../Elyra/Components/**/*.razor.cs">
+            <Link>Components/%(RecursiveDir)%(Filename)%(Extension)</Link>
+        </Compile>
+        <Compile Include="../Elyra/Models/**/*.cs">
+            <Link>Models/%(RecursiveDir)%(Filename)%(Extension)</Link>
+        </Compile>
+        <Compile Include="../Elyra/Services/**/*.cs">
+            <Link>Services/%(RecursiveDir)%(Filename)%(Extension)</Link>
+        </Compile>
+
+        <RazorComponent Include="../Elyra/Components/**/*.razor">
+            <Link>Components/%(RecursiveDir)%(Filename)%(Extension)</Link>
+        </RazorComponent>
+
+        <Content Include="../Elyra/wwwroot/**" Exclude="../Elyra/wwwroot/index.html">
+            <Link>wwwroot/%(RecursiveDir)%(Filename)%(Extension)</Link>
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+    </ItemGroup>
+
+    <!-- Tailwind build pipeline, reusing the MAUI project's npm setup and source
+         so the desktop shell shares the exact same generated stylesheet. -->
+    <PropertyGroup>
+        <TailwindOutput>../Elyra/wwwroot/css/app.css</TailwindOutput>
+    </PropertyGroup>
+
+    <Target Name="EnsureTailwindCss" BeforeTargets="BeforeBuild;BeforeRebuild" Condition="!Exists('$(TailwindOutput)')">
+        <Exec Command="npm install" WorkingDirectory="../Elyra" />
+        <Exec Command="npm run css:build" WorkingDirectory="../Elyra" />
+    </Target>
+
+</Project>

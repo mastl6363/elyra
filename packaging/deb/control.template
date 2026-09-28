@@ -1,0 +1,13 @@
+Package: elyra
+Version: __VERSION__
+Section: sound
+Priority: optional
+Architecture: amd64
+Depends: libvlc5, vlc-plugin-base, zenity, libc6 (>= 2.35)
+Maintainer: Elyra Contributors <noreply@example.com>
+Homepage: https://github.com/mastl6363/elyra
+Description: Moderner, werbefreier Musikplayer für lokale Sammlungen
+ Elyra ist ein lokaler Musikplayer für MP3/FLAC mit künstlerzentrierter
+ Mediathek, persistenten Wiedergabelisten, Internetradio (radio-browser.info)
+ und optionalem MusicBrainz-Metadatenabgleich. Läuft als lokaler Blazor-Server
+ (Kestrel, 127.0.0.1) und öffnet sich im Standardbrowser.

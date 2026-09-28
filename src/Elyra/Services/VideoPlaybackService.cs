@@ -8,7 +8,9 @@ public sealed class VideoPlaybackService
     private readonly AudioPlayerService _audio;
     private readonly PlaybackService _playback;
     private readonly VideoLibraryService _library;
+#if ANDROID || IOS || MACCATALYST || WINDOWS
     private bool _isOpen;
+#endif
 
     public VideoPlaybackService(
         AudioPlayerService audio,
@@ -20,6 +22,7 @@ public sealed class VideoPlaybackService
         _library = library;
     }
 
+#if ANDROID || IOS || MACCATALYST || WINDOWS
     public Task OpenAsync(VideoItem video) => MainThread.InvokeOnMainThreadAsync(async () =>
     {
         if (_isOpen) return;
@@ -44,4 +47,11 @@ public sealed class VideoPlaybackService
             throw;
         }
     });
+#else
+    // The native video surface (VideoPlayerPage) is a MAUI ContentPage; the Linux
+    // desktop host has no MAUI window to push it onto. Movie/DVD playback stays
+    // Windows/Android-only until a Linux-native video surface exists.
+    public Task OpenAsync(VideoItem video) => throw new PlatformNotSupportedException(
+        "Video-/DVD-Wiedergabe ist im Linux-Desktop-Build noch nicht verfügbar.");
+#endif
 }

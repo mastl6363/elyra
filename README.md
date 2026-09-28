@@ -55,6 +55,30 @@ MSBuild-Target `TailwindBuild`.
 
 > iOS-Build benötigt einen Mac (Pair to Mac).
 
+## Linux-Desktop (nativ, ohne Emulator)
+
+`src/Elyra.Desktop` ist ein separater Blazor-Server-Host für Linux-Desktops. Er
+teilt sich Components/Models/Services mit `src/Elyra` (per Datei-Link im
+`.csproj`), läuft aber als lokaler Kestrel-Server (`127.0.0.1:5297`) statt in
+einer MAUI-WebView und öffnet sich automatisch im Standardbrowser.
+
+Voraussetzungen (einmalig, per `apt`): `libvlc5 libvlc-dev vlc-plugin-base`
+(Audio-Engine) und `zenity` (Ordnerauswahl-Dialog).
+
+```bash
+# Dev-Loop (nutzt den NuGet-Cache für Framework-JS, kein Publish nötig)
+cd src/Elyra.Desktop
+ASPNETCORE_ENVIRONMENT=Development dotnet run
+
+# "Produktions"-Start (empfohlen für den Alltagsgebrauch)
+dotnet publish src/Elyra.Desktop/Elyra.Desktop.csproj -c Release -o out/Elyra.Desktop
+dotnet out/Elyra.Desktop/Elyra.Desktop.dll
+```
+
+Video-/DVD-Wiedergabe (`Filme`) ist auf dem Linux-Desktop-Host noch nicht
+verfügbar — das MAUI-eigene `VideoPlayerPage` lässt sich nicht direkt in einen
+Browser-Tab einbetten; Musik, Playlists und Radio funktionieren vollständig.
+
 ## Mitmachen
 
 Beiträge sind willkommen — siehe [CONTRIBUTING.md](CONTRIBUTING.md) für den
