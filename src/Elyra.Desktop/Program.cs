@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Net.Sockets;
+using System.Threading;
 using Elyra;
 using Elyra.Services;
 
@@ -7,12 +8,30 @@ const string Url = "http://127.0.0.1:5297";
 
 // Elyra is a single-user local app. If it's already running (e.g. launched
 // twice from the app menu), don't crash on the port conflict — just bring the
-// existing instance's tab back up and exit.
+// existing instance's tab back up and exit. But if that running instance is an
+// older build (e.g. `apt upgrade`/`dpkg -i` replaced the binary on disk while
+// the old process was still running — its file handle stays valid, so it
+// keeps serving the old code from memory), kill it first so the freshly
+// installed version actually takes over instead of the upgrade silently
+// doing nothing from the user's point of view.
+var pidFilePath = Path.Combine(AppPaths.DataDirectory, "desktop-instance.pid");
+var exePath = Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule?.FileName ?? "";
+var exeVersion = File.Exists(exePath) ? File.GetLastWriteTimeUtc(exePath).ToString("O") : "";
+
 if (IsAlreadyRunning())
 {
-    OpenBrowser(Url);
-    return;
+    if (TryReplaceStaleInstance(pidFilePath, exePath, exeVersion))
+    {
+        // Old instance killed — fall through and start fresh below.
+    }
+    else
+    {
+        OpenBrowser(Url);
+        return;
+    }
 }
+
+File.WriteAllText(pidFilePath, $"{Environment.ProcessId}|{exePath}|{exeVersion}");
 
 // Load the native libVLC binaries once, before any LibVLC object is created,
 // mirroring MauiProgram.cs on the MAUI targets.
@@ -60,6 +79,65 @@ Console.WriteLine($"Elyra läuft auf {Url}");
 OpenBrowser(Url);
 
 app.Run();
+
+// Returns true (having killed the old process and freed the port) only when
+// the pidfile identifies a live process that was started from a now-outdated
+// build of this same executable. Anything less certain — no pidfile, process
+// gone, or it's genuinely today's build already running — is left alone.
+static bool TryReplaceStaleInstance(string pidFilePath, string currentExePath, string currentExeVersion)
+{
+    string[] parts;
+    try
+    {
+        if (!File.Exists(pidFilePath)) return false;
+        parts = File.ReadAllText(pidFilePath).Split('|', 3);
+        if (parts.Length != 3) return false;
+    }
+    catch { return false; }
+
+    if (!int.TryParse(parts[0], out var pid)) return false;
+    var (recordedExePath, recordedVersion) = (parts[1], parts[2]);
+
+    // Same build already running (or we can't tell) — treat as up to date.
+    if (recordedExePath != currentExePath || recordedVersion == currentExeVersion)
+        return false;
+
+    try
+    {
+        var process = Process.GetProcessById(pid);
+        // Only kill it if it's still the process we think it is, identified by
+        // the same recorded executable path — avoids killing an unrelated
+        // process that happens to have reused this PID since.
+        if (process.MainModule?.FileName != recordedExePath && !IsDeletedExePath(pid, recordedExePath))
+            return false;
+
+        process.Kill();
+        process.WaitForExit((int)TimeSpan.FromSeconds(5).TotalMilliseconds);
+    }
+    catch
+    {
+        return false; // process already gone, or we don't have permission — leave it
+    }
+
+    // Wait for the port to actually free up before the caller starts a new listener.
+    for (var i = 0; i < 25 && IsAlreadyRunning(); i++)
+        Thread.Sleep(200);
+
+    return true;
+
+    static bool IsDeletedExePath(int pid, string expectedPath)
+    {
+        // On Linux, MainModule.FileName is null/empty once the on-disk file has
+        // been replaced (dpkg -i) — /proc/<pid>/exe still resolves, just with
+        // " (deleted)" appended, so compare against that instead.
+        try
+        {
+            var link = new FileInfo($"/proc/{pid}/exe");
+            return link.LinkTarget == expectedPath || link.LinkTarget == $"{expectedPath} (deleted)";
+        }
+        catch { return false; }
+    }
+}
 
 static bool IsAlreadyRunning()
 {
