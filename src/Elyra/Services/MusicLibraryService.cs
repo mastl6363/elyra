@@ -14,6 +14,9 @@ public sealed class MusicLibraryService
         new(StringComparer.OrdinalIgnoreCase) { ".mp3", ".flac" };
 
     public IReadOnlyList<Track> Tracks { get; private set; } = Array.Empty<Track>();
+    private IReadOnlyList<Album> _albums = Array.Empty<Album>();
+    private IReadOnlyList<Artist> _artists = Array.Empty<Artist>();
+    private IReadOnlyList<Genre> _genres = Array.Empty<Genre>();
     public string? FolderPath { get; private set; }
     public bool IsScanning { get; private set; }
 
@@ -26,6 +29,7 @@ public sealed class MusicLibraryService
             FolderPath = state.FolderPath;
             var normalizedTracks = state.Tracks.Select(NormalizeLegacyTrack).ToList();
             Tracks = normalizedTracks;
+            RebuildViews();
 
             if (normalizedTracks.Where((track, index) => !ReferenceEquals(track, state.Tracks[index])).Any())
             {
@@ -38,10 +42,18 @@ public sealed class MusicLibraryService
     public event EventHandler? Changed;
 
     /// <summary>Tracks with album metadata, grouped into albums.</summary>
-    public IReadOnlyList<Album> Albums => BuildAlbums(Tracks);
+    public IReadOnlyList<Album> Albums => _albums;
 
     /// <summary>All tracks grouped by their credited artist.</summary>
-    public IReadOnlyList<Artist> Artists => Tracks
+    public IReadOnlyList<Artist> Artists => _artists;
+
+    /// <summary>All tracks with a genre tag, grouped by genre.</summary>
+    public IReadOnlyList<Genre> Genres => _genres;
+
+    private void RebuildViews()
+    {
+        _albums = BuildAlbums(Tracks);
+        _artists = Tracks
         .GroupBy(t => t.Artist.Trim(), StringComparer.CurrentCultureIgnoreCase)
         .Select(group =>
         {
@@ -64,8 +76,7 @@ public sealed class MusicLibraryService
         .OrderBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase)
         .ToList();
 
-    /// <summary>All tracks with a genre tag, grouped by genre.</summary>
-    public IReadOnlyList<Genre> Genres => Tracks
+        _genres = Tracks
         .Where(t => !string.IsNullOrWhiteSpace(t.Genre))
         .GroupBy(t => t.Genre.Trim(), StringComparer.CurrentCultureIgnoreCase)
         .Select(group =>
@@ -88,6 +99,7 @@ public sealed class MusicLibraryService
         })
         .OrderBy(g => g.Name, StringComparer.CurrentCultureIgnoreCase)
         .ToList();
+    }
 
     private static IReadOnlyList<Album> BuildAlbums(IEnumerable<Track> tracks) => tracks
         .Where(t => !string.IsNullOrWhiteSpace(t.Album))
@@ -126,7 +138,9 @@ public sealed class MusicLibraryService
         Changed?.Invoke(this, EventArgs.Empty);
         try
         {
-            Tracks = await Task.Run(() => ScanFolder(folderPath));
+            var localTracks = await Task.Run(() => ScanFolder(folderPath));
+            Tracks = localTracks.Concat(Tracks.Where(t => t.NextcloudPath is not null)).ToList();
+            RebuildViews();
             FolderPath = folderPath;
             PersistState();
         }
@@ -141,9 +155,66 @@ public sealed class MusicLibraryService
         ? Task.CompletedTask
         : ImportFolderAsync(FolderPath);
 
+    public void SetNextcloudTracks(IEnumerable<Track> remoteTracks)
+    {
+        Tracks = Tracks.Where(t => t.NextcloudPath is null).Concat(remoteTracks).ToList();
+        RebuildViews();
+        PersistState();
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void RemoveNextcloudTracks() => SetNextcloudTracks([]);
+
+    public void RemoveLocalTracks()
+    {
+        Tracks = Tracks.Where(t => t.NextcloudPath is not null).ToList();
+        FolderPath = null;
+        RebuildViews();
+        PersistState();
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void ApplyCachedNextcloudTrack(Track track, string cachedFile)
+    {
+        Track enriched;
+        try { enriched = ReadCachedNextcloudTrack(track, cachedFile); }
+        catch { return; }
+        var current = Tracks.FirstOrDefault(t => t.FilePath == track.FilePath);
+        if (current is null || current.NextcloudEtag != track.NextcloudEtag) return;
+        Tracks = Tracks.Select(t => t.FilePath == track.FilePath ? enriched : t).ToList();
+        RebuildViews();
+        PersistState();
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    public static Track ReadCachedNextcloudTrack(Track track, string cachedFile)
+    {
+        using var file = TagLib.File.Create(cachedFile);
+        var tag = file.Tag;
+        var picture = tag.Pictures.FirstOrDefault(p => p.Data?.Data?.Length > 0);
+        var cover = picture is null ? track.CoverArtDataUri :
+            $"data:{(string.IsNullOrWhiteSpace(picture.MimeType) ? "image/jpeg" : picture.MimeType)};base64,{Convert.ToBase64String(picture.Data.Data)}";
+        return new Track
+        {
+            FilePath = track.FilePath,
+            NextcloudPath = track.NextcloudPath,
+            NextcloudEtag = track.NextcloudEtag,
+            Title = string.IsNullOrWhiteSpace(tag.Title) ? track.Title : tag.Title,
+            Artist = string.IsNullOrWhiteSpace(tag.FirstPerformer) ? track.Artist : tag.FirstPerformer,
+            Album = string.IsNullOrWhiteSpace(tag.Album) ? track.Album : tag.Album,
+            AlbumArtist = string.IsNullOrWhiteSpace(tag.FirstAlbumArtist) ? track.AlbumArtist : tag.FirstAlbumArtist,
+            Genre = string.IsNullOrWhiteSpace(tag.FirstGenre) ? track.Genre : tag.FirstGenre,
+            TrackNumber = tag.Track == 0 ? track.TrackNumber : tag.Track,
+            DiscNumber = tag.Disc == 0 ? track.DiscNumber : tag.Disc,
+            Duration = file.Properties?.Duration ?? track.Duration,
+            CoverArtDataUri = cover
+        };
+    }
+
     public void Clear()
     {
         Tracks = Array.Empty<Track>();
+        RebuildViews();
         FolderPath = null;
         _stateStore.Clear();
         Changed?.Invoke(this, EventArgs.Empty);
@@ -169,6 +240,7 @@ public sealed class MusicLibraryService
 
         if (updatedCount > 0)
         {
+            RebuildViews();
             PersistState();
             Changed?.Invoke(this, EventArgs.Empty);
         }
@@ -260,7 +332,9 @@ public sealed class MusicLibraryService
             TrackNumber = track.TrackNumber,
             DiscNumber = track.DiscNumber,
             Duration = track.Duration,
-            CoverArtDataUri = track.CoverArtDataUri
+            CoverArtDataUri = track.CoverArtDataUri,
+            NextcloudPath = track.NextcloudPath,
+            NextcloudEtag = track.NextcloudEtag
         };
     }
 

@@ -2,6 +2,29 @@
 
 Kurzes Log der weichenstellenden Entscheidungen. Neueste oben.
 
+## 2026-10-18 — Nextcloud-Musik per WebDAV
+
+- **Bedarfsgesteuertes Streaming.** Elyra liest die Ordnerstruktur mit WebDAV
+  und streamt Titel über einen nur auf Loopback erreichbaren Proxy an LibVLC.
+  Der Proxy unterstützt Bereichsanfragen für das Spulen.
+- **Lokaler Cache.** Abgerufene Titel werden vollständig und atomar in AppData
+  gespeichert; ein LRU-Limit von 1 GiB begrenzt den Platzbedarf.
+- **App-Passwort nur im Arbeitsspeicher.** Server, Benutzer und Musikordner
+  werden gespeichert, das App-Passwort muss pro Sitzung erneut eingegeben
+  werden. Weder Mediathek noch Stream-URL enthalten Zugangsdaten.
+
+## 2026-10-18 — Videowiedergabe im Linux-Desktop
+
+- **Natives X11-Fenster für LibVLC.** Der lokale Blazor-Server kann Video nicht
+  in den Browser einbetten, ohne auf Browser-Codecs beschränkt zu sein. LibVLC
+  zeichnet deshalb in ein eigenes X11-Fenster; die bestehenden Player-Dienste
+  steuern Wiedergabe und speichern Fortsetzungspositionen.
+- **Videoausgabe als Paketabhängigkeit.** `vlc-plugin-video-output` und
+  `libx11-6` werden mit dem Linux-Paket installiert. Die bisherige
+  `vlc-plugin-base`-Abhängigkeit enthält keine X11-Videoausgabe.
+- **DVD bleibt auf Windows.** Der Linux-Host unterstützt lokale Videodateien;
+  die vorhandene MAUI-Seite übernimmt weiterhin DVD-Menüs auf Windows.
+
 ## 2026-07-15 — Künstlerzentrierte Mediathek
 
 - **Primäre Navigation: Künstler statt Album.** Unvollständige MP3-Tags erzeugen

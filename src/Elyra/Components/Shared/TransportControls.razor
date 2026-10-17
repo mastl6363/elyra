@@ -6,14 +6,14 @@
     var hasMedia = Playback.HasCurrent;
     var canNavigate = Playback.Current is not null;
     var canShuffle = Playback.Current is not null && Playback.Queue.Count > 1;
-    var sideIcon = Large ? "h-7 w-7" : "h-5 w-5";
+    var sideIcon = Large ? "h-6 w-6" : "h-5 w-5";
     var playButton = Large ? "h-14 w-14" : "h-10 w-10";
     var playIcon = Large ? "h-6 w-6" : "h-5 w-5";
 }
 
-<div class="flex items-center @(Large ? "gap-8" : "gap-5")">
+<div class="flex items-center @(Large ? "gap-5" : "gap-1")">
     <button @onclick="Playback.ToggleShuffle" disabled="@(!canShuffle)"
-            class="transition-colors disabled:opacity-40 @(Playback.ShuffleEnabled ? "text-accent" : "text-muted hover:text-ink")"
+            class="flex h-10 w-10 items-center justify-center rounded-full transition-colors disabled:opacity-40 @(Playback.ShuffleEnabled ? "bg-accent/15 text-accent" : "text-muted hover:bg-surface-2 hover:text-ink")"
             aria-label="Zufallswiedergabe" aria-pressed="@Playback.ShuffleEnabled" title="Zufallswiedergabe">
         <svg class="@sideIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M16 3h5v5" /><path d="m4 20 17-17" /><path d="M21 16v5h-5" /><path d="m15 15 6 6" /><path d="M4 4l5 5" />
@@ -21,7 +21,7 @@
     </button>
 
     <button @onclick="Playback.Previous" disabled="@(!canNavigate)"
-            class="text-muted transition-colors hover:text-ink disabled:opacity-40" aria-label="Zurück">
+            class="flex h-10 w-10 items-center justify-center rounded-full text-muted transition-colors hover:bg-surface-2 hover:text-ink disabled:opacity-40" aria-label="Zurück">
         <svg class="@sideIcon" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h2v14H6zM20 5v14l-11-7z" /></svg>
     </button>
 
@@ -39,7 +39,7 @@
     </button>
 
     <button @onclick="Playback.Next" disabled="@(!canNavigate)"
-            class="text-muted transition-colors hover:text-ink disabled:opacity-40" aria-label="Weiter">
+            class="flex h-10 w-10 items-center justify-center rounded-full text-muted transition-colors hover:bg-surface-2 hover:text-ink disabled:opacity-40" aria-label="Weiter">
         <svg class="@sideIcon" viewBox="0 0 24 24" fill="currentColor"><path d="M16 5h2v14h-2zM4 5l11 7-11 7z" /></svg>
     </button>
 </div>

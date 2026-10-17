@@ -1,15 +1,80 @@
 @inherits LayoutComponentBase
+@inject QueuePanelState QueueState
+@inject PlaybackService Playback
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@implements IAsyncDisposable
 
 <div class="flex h-screen flex-col bg-canvas text-ink">
-    <div class="flex flex-1 overflow-hidden">
-        <aside class="w-60 shrink-0 border-r border-line bg-surface">
+    <nav class="flex shrink-0 gap-1 overflow-x-auto border-b border-line bg-surface px-2 py-2 text-xs md:hidden" aria-label="Hauptnavigation">
+        <NavLink href="" Match="NavLinkMatch.All" class="shrink-0 rounded-full px-3 py-2 text-muted" ActiveClass="bg-surface-2 !text-ink">Start</NavLink>
+        <NavLink href="library" class="shrink-0 rounded-full px-3 py-2 text-muted" ActiveClass="bg-surface-2 !text-ink">Mediathek</NavLink>
+        <NavLink href="search" class="shrink-0 rounded-full px-3 py-2 text-muted" ActiveClass="bg-surface-2 !text-ink">Suche</NavLink>
+        <NavLink href="playlists" class="shrink-0 rounded-full px-3 py-2 text-muted" ActiveClass="bg-surface-2 !text-ink">Playlists</NavLink>
+        <NavLink href="radio" class="shrink-0 rounded-full px-3 py-2 text-muted" ActiveClass="bg-surface-2 !text-ink">Radio</NavLink>
+        <NavLink href="videos" class="shrink-0 rounded-full px-3 py-2 text-muted" ActiveClass="bg-surface-2 !text-ink">Filme</NavLink>
+        <NavLink href="settings" class="shrink-0 rounded-full px-3 py-2 text-muted" ActiveClass="bg-surface-2 !text-ink">Einstellungen</NavLink>
+    </nav>
+    <div class="relative flex flex-1 overflow-hidden">
+        <aside class="hidden w-60 shrink-0 border-r border-line bg-surface md:block">
             <NavMenu />
         </aside>
 
         <main class="flex-1 overflow-y-auto">
             @Body
         </main>
+        @if (QueueState.IsOpen)
+        {
+            <QueuePanel />
+        }
     </div>
 
     <PlayerBar />
 </div>
+
+@code {
+    private IJSObjectReference? _module;
+    private IJSObjectReference? _shortcutRegistration;
+    private DotNetObjectReference<MainLayout>? _self;
+
+    protected override void OnInitialized() => QueueState.Changed += OnQueueChanged;
+    private void OnQueueChanged(object? sender, EventArgs args) => InvokeAsync(StateHasChanged);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            _module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/shortcuts.js");
+            _self = DotNetObjectReference.Create(this);
+            _shortcutRegistration = await _module.InvokeAsync<IJSObjectReference>("register", _self);
+        }
+        catch (JSException)
+        {
+            _self?.Dispose();
+            _self = null;
+        }
+    }
+
+    [JSInvokable] public Task OpenSearch() => InvokeAsync(() => Nav.NavigateTo("/search"));
+    [JSInvokable] public Task TogglePlayback() => InvokeAsync(Playback.TogglePlayPause);
+    [JSInvokable] public Task CloseQueue() => InvokeAsync(QueueState.Close);
+    [JSInvokable] public Task SeekBy(int seconds) => InvokeAsync(() =>
+    {
+        if (Playback.Current is null || Playback.Duration <= TimeSpan.Zero) return;
+        var target = Playback.Position + TimeSpan.FromSeconds(seconds);
+        Playback.Seek(target < TimeSpan.Zero ? TimeSpan.Zero : target > Playback.Duration ? Playback.Duration : target);
+    });
+
+    public async ValueTask DisposeAsync()
+    {
+        QueueState.Changed -= OnQueueChanged;
+        try
+        {
+            if (_shortcutRegistration is not null) await _shortcutRegistration.InvokeVoidAsync("dispose");
+            if (_module is not null) await _module.DisposeAsync();
+        }
+        catch (JSException) { }
+        _self?.Dispose();
+    }
+}

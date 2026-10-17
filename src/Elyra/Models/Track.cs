@@ -20,6 +20,10 @@ public sealed class Track
     /// <summary>Embedded cover art as a ready-to-use data URI, or null if none.</summary>
     public string? CoverArtDataUri { get; init; }
 
+    /// <summary>Relative WebDAV path for a Nextcloud track; never contains credentials.</summary>
+    public string? NextcloudPath { get; init; }
+    public string? NextcloudEtag { get; init; }
+
     /// <summary>
     /// Grouping key for the album grid: album artist (fallback artist) + album,
     /// joined with U+001F (a control character that never appears in real tag

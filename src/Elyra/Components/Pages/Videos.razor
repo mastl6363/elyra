@@ -1,6 +1,7 @@
 @page "/videos"
 @inject VideoLibraryService Library
 @inject VideoPlaybackService VideoPlayback
+@inject PlaybackService Playback
 @implements IDisposable
 
 <div class="mx-auto max-w-6xl px-8 py-6">
@@ -8,7 +9,7 @@
         <div>
             <div class="text-xs uppercase tracking-wide text-accent">Video</div>
             <h1 class="mt-1 text-3xl font-semibold tracking-tight">Filme</h1>
-            <p class="mt-1 text-sm text-muted">Lokale Filmdateien und DVDs mit VLC wiedergeben.</p>
+            <p class="mt-1 text-sm text-muted">@(OperatingSystem.IsWindows() ? "Lokale Filmdateien und DVDs" : "Lokale Filmdateien") mit VLC wiedergeben.</p>
         </div>
         <button @onclick="AddMoviesAsync" disabled="@_isPicking"
                 class="rounded-full bg-accent px-5 py-2.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50">
@@ -19,6 +20,22 @@
     @if (!string.IsNullOrWhiteSpace(_message))
     {
         <div class="mt-5 rounded-lg border border-line bg-surface px-4 py-3 text-sm text-muted">@_message</div>
+    }
+
+    @if (Playback.CurrentVideo is not null)
+    {
+        <div class="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-accent/30 bg-accent/10 px-4 py-3 text-sm">
+            <span>Jetzt läuft: <strong>@Playback.CurrentVideo.Title</strong></span>
+            <div class="flex gap-2">
+                <button @onclick="() => PlayAsync(Playback.CurrentVideo)" class="rounded-full bg-surface-2 px-4 py-2 hover:bg-line">Videofenster anzeigen</button>
+                <button @onclick="VideoPlayback.CloseAsync" class="rounded-full bg-surface-2 px-4 py-2 hover:bg-line">Film schließen</button>
+            </div>
+        </div>
+    }
+
+    @if (OperatingSystem.IsLinux())
+    {
+        <p class="mt-4 text-xs text-muted">Im Videofenster: Leertaste für Pause, ←/→ für fünf Sekunden zurück/vor, Esc zum Schließen.</p>
     }
 
     @if (OperatingSystem.IsWindows())
@@ -115,6 +132,7 @@
     protected override void OnInitialized()
     {
         Library.Changed += OnChanged;
+        Playback.CurrentChanged += OnChanged;
         RefreshDrives();
     }
 
@@ -147,5 +165,9 @@
     private void RefreshDrives() => _dvdDrives = Library.GetDvdDrives();
     private void OnChanged(object? sender, EventArgs args) => InvokeAsync(StateHasChanged);
     private static string Format(TimeSpan value) => value.TotalHours >= 1 ? value.ToString(@"h\:mm\:ss") : value.ToString(@"m\:ss");
-    public void Dispose() => Library.Changed -= OnChanged;
+    public void Dispose()
+    {
+        Library.Changed -= OnChanged;
+        Playback.CurrentChanged -= OnChanged;
+    }
 }

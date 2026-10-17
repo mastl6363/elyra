@@ -17,6 +17,11 @@ public sealed class PlaybackOrder
     public bool ShuffleEnabled { get; private set; }
     public int CurrentIndex { get; private set; } = -1;
 
+    /// <summary>Queue indices in the order they will actually play.</summary>
+    public IReadOnlyList<int> UpcomingIndices => CurrentIndex < 0 ? [] : ShuffleEnabled
+        ? _shuffleOrder.Skip(_shufflePosition + 1).ToArray()
+        : Enumerable.Range(CurrentIndex + 1, _count - CurrentIndex - 1).ToArray();
+
     public void Reset(int count, int startIndex)
     {
         _count = Math.Max(0, count);
@@ -69,6 +74,53 @@ public sealed class PlaybackOrder
         }
 
         index = CurrentIndex;
+        return true;
+    }
+
+    /// <summary>Append a new queue item, but play it directly after the current shuffled item.</summary>
+    public void AppendNextInShuffle()
+    {
+        if (!ShuffleEnabled || CurrentIndex < 0)
+            throw new InvalidOperationException("A shuffled track must be playing.");
+
+        _shuffleOrder.Insert(_shufflePosition + 1, _count);
+        _count++;
+    }
+
+    /// <summary>Remove an upcoming item and return its index in the source queue.</summary>
+    public int RemoveUpcomingAt(int position)
+    {
+        var upcoming = UpcomingIndices;
+        if ((uint)position >= (uint)upcoming.Count)
+            throw new ArgumentOutOfRangeException(nameof(position));
+
+        var index = upcoming[position];
+        _count--;
+        if (ShuffleEnabled)
+        {
+            _shuffleOrder.RemoveAt(_shufflePosition + 1 + position);
+            for (var i = 0; i < _shuffleOrder.Count; i++)
+                if (_shuffleOrder[i] > index) _shuffleOrder[i]--;
+            if (CurrentIndex > index) CurrentIndex--;
+        }
+
+        return index;
+    }
+
+    /// <summary>Move an upcoming shuffled item one slot. Natural queue moves are handled by the owner.</summary>
+    public bool MoveUpcoming(int position, int direction)
+    {
+        var next = position + direction;
+        var count = UpcomingIndices.Count;
+        if ((uint)position >= (uint)count || (uint)next >= (uint)count)
+            return false;
+
+        if (ShuffleEnabled)
+        {
+            var first = _shufflePosition + 1 + position;
+            var second = _shufflePosition + 1 + next;
+            (_shuffleOrder[first], _shuffleOrder[second]) = (_shuffleOrder[second], _shuffleOrder[first]);
+        }
         return true;
     }
 

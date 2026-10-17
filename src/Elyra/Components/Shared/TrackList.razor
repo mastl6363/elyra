@@ -28,6 +28,14 @@
 
             <div class="shrink-0 text-xs tabular-nums text-muted">@track.DurationLabel</div>
 
+            @if (ShowPlayNext)
+            {
+                <button @onclick="() => Playback.PlayNext(track)" class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted hover:bg-accent/15 hover:text-accent"
+                        title="Als Nächstes spielen" aria-label="@track.Title als Nächstes spielen">
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m5 5 10 7-10 7z"/><path d="M19 5v14"/><path d="M17 3h5"/></svg>
+                </button>
+            }
+
             @if (ShowAdd)
             {
                 <AddToPlaylistButton Track="track" />
@@ -47,6 +55,7 @@
 @code {
     [Parameter, EditorRequired] public IReadOnlyList<Track> Tracks { get; set; } = Array.Empty<Track>();
     [Parameter] public bool ShowAdd { get; set; } = true;
+    [Parameter] public bool ShowPlayNext { get; set; } = true;
     [Parameter] public bool ShowRemove { get; set; }
     [Parameter] public EventCallback<Track> OnRemove { get; set; }
 

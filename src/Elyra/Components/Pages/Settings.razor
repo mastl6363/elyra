@@ -3,6 +3,7 @@
 @inject FolderPickerService FolderPicker
 @inject PlaybackService Playback
 @inject MusicBrainzMetadataService MusicBrainz
+@inject NextcloudMusicService Nextcloud
 @implements IDisposable
 
 <div class="mx-auto max-w-3xl px-8 py-6">
@@ -51,6 +52,46 @@
             @if (!string.IsNullOrEmpty(_message))
             {
                 <p class="text-sm @(_isError ? "text-red-400" : "text-muted")">@_message</p>
+            }
+        </div>
+    </section>
+
+    <section class="mt-5 overflow-hidden rounded-xl border border-line bg-surface">
+        <div class="border-b border-line px-5 py-4">
+            <h2 class="font-medium">Nextcloud-Musik</h2>
+            <p class="mt-1 text-xs text-muted">Titel bei Bedarf streamen und nach der Wiedergabe lokal zwischenspeichern. Das App-Passwort bleibt nur für diese Sitzung im Speicher.</p>
+        </div>
+        <div class="space-y-4 px-5 py-5">
+            <label class="block text-sm">Server-Adresse
+                <input class="mt-1 w-full rounded-lg border border-line bg-surface-2 px-3 py-2 text-ink" type="url" autocomplete="url" @bind="_nextcloudForm.ServerUrl" placeholder="https://cloud.example.com" />
+            </label>
+            <div class="grid gap-3 sm:grid-cols-2">
+                <label class="block text-sm">Benutzername
+                    <input class="mt-1 w-full rounded-lg border border-line bg-surface-2 px-3 py-2 text-ink" autocomplete="username" @bind="_nextcloudForm.Username" />
+                </label>
+                <label class="block text-sm">Musikordner in Nextcloud
+                    <input class="mt-1 w-full rounded-lg border border-line bg-surface-2 px-3 py-2 text-ink" @bind="_nextcloudForm.MusicFolder" placeholder="Music" />
+                </label>
+            </div>
+            <label class="block text-sm">Nextcloud-App-Passwort
+                <input class="mt-1 w-full rounded-lg border border-line bg-surface-2 px-3 py-2 text-ink" type="password" autocomplete="new-password" @bind="_nextcloudPassword" placeholder="In Nextcloud unter Sicherheit erstellen" />
+            </label>
+            <p class="text-xs text-muted">Ein App-Passwort erstellst du in Nextcloud unter Persönliche Einstellungen → Sicherheit. Der Ordner ist relativ zu deinen Dateien; leer bedeutet alle Dateien.</p>
+            <div class="flex flex-wrap items-center gap-2">
+                <button @onclick="ConnectNextcloudAsync" disabled="@_nextcloudBusy" class="rounded-full bg-accent px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50">@(_nextcloudBusy ? "Mediathek wird eingelesen …" : Nextcloud.IsConnected ? "Erneut einlesen" : "Verbinden und einlesen")</button>
+                @if (_nextcloudBusy)
+                {
+                    <button @onclick="CancelNextcloud" class="rounded-full bg-surface-2 px-4 py-2 text-sm text-ink hover:bg-line">Abbrechen</button>
+                }
+                @if (Nextcloud.IsConnected || Library.Tracks.Any(t => t.NextcloudPath is not null))
+                {
+                    <button @onclick="RemoveNextcloud" disabled="@_nextcloudBusy" class="rounded-full bg-surface-2 px-4 py-2 text-sm text-ink hover:bg-line disabled:opacity-50">Verbindung entfernen</button>
+                }
+            </div>
+            <div class="text-xs text-muted">@Library.Tracks.Count(t => t.NextcloudPath is not null) Nextcloud-Titel · @(Nextcloud.IsConnected ? "Verbunden" : "Nicht verbunden")</div>
+            @if (!string.IsNullOrEmpty(_nextcloudMessage))
+            {
+                <p class="text-sm @(_nextcloudError ? "text-red-400" : "text-muted")">@_nextcloudMessage</p>
             }
         </div>
     </section>
@@ -117,8 +158,13 @@
     </section>
 
     <section class="mt-5 rounded-xl border border-line bg-surface px-5 py-4">
+        <h2 class="text-sm font-semibold">Tastatur</h2>
+        <p class="mt-2 text-sm text-muted"><kbd>Leertaste</kbd> Wiedergabe pausieren oder fortsetzen · <kbd>←</kbd>/<kbd>→</kbd> 5 Sekunden springen · <kbd>/</kbd> oder <kbd>Strg/⌘ + K</kbd> Suche öffnen</p>
+    </section>
+
+    <section class="mt-5 rounded-xl border border-line bg-surface px-5 py-4">
         <div class="text-sm font-medium">Elyra</div>
-        <div class="mt-1 text-xs text-muted">Version 1.0 · Lokaler, werbefreier MP3- und FLAC-Player</div>
+        <div class="mt-1 text-xs text-muted">Lokaler, werbefreier MP3- und FLAC-Player</div>
     </section>
 </div>
 
@@ -129,6 +175,12 @@
     private string? _metadataMessage;
     private MetadataEnrichmentProgress? _metadataProgress;
     private CancellationTokenSource? _metadataCancellation;
+    private NextcloudConnection _nextcloudForm = new();
+    private string _nextcloudPassword = "";
+    private string? _nextcloudMessage;
+    private bool _nextcloudError;
+    private bool _nextcloudBusy;
+    private CancellationTokenSource? _nextcloudCancellation;
 
     private int MissingAlbumCount => Library.Tracks.Count(track => string.IsNullOrWhiteSpace(track.Album));
     private int EligibleMetadataCount => Library.Tracks.Count(track =>
@@ -138,7 +190,47 @@
             : 0)
         .ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
 
-    protected override void OnInitialized() => Library.Changed += OnLibraryChanged;
+    protected override void OnInitialized()
+    {
+        Library.Changed += OnLibraryChanged;
+        var saved = Nextcloud.Connection;
+        _nextcloudForm = new NextcloudConnection { ServerUrl = saved.ServerUrl, Username = saved.Username, MusicFolder = saved.MusicFolder };
+    }
+
+    private async Task ConnectNextcloudAsync()
+    {
+        _nextcloudBusy = true;
+        _nextcloudError = false;
+        _nextcloudMessage = null;
+        _nextcloudCancellation = new CancellationTokenSource();
+        try
+        {
+            var tracks = !string.IsNullOrWhiteSpace(_nextcloudPassword)
+                ? await Nextcloud.ConnectAndScanAsync(_nextcloudForm, _nextcloudPassword, _nextcloudCancellation.Token)
+                : await Nextcloud.ScanAsync(_nextcloudCancellation.Token);
+            Library.SetNextcloudTracks(tracks);
+            _nextcloudMessage = $"{tracks.Count} Titel aus Nextcloud eingelesen.";
+        }
+        catch (OperationCanceledException) { _nextcloudMessage = "Einlesen abgebrochen."; }
+        catch (Exception ex) { _nextcloudMessage = ex.Message; _nextcloudError = true; }
+        finally
+        {
+            _nextcloudPassword = "";
+            _nextcloudBusy = false;
+            _nextcloudCancellation?.Dispose();
+            _nextcloudCancellation = null;
+        }
+    }
+
+    private void CancelNextcloud() => _nextcloudCancellation?.Cancel();
+
+    private void RemoveNextcloud()
+    {
+        Nextcloud.Disconnect();
+        Library.RemoveNextcloudTracks();
+        _nextcloudMessage = "Nextcloud-Verbindung entfernt.";
+        _nextcloudError = false;
+    }
 
     private void OnLibraryChanged(object? sender, EventArgs e) => InvokeAsync(StateHasChanged);
 
@@ -174,13 +266,15 @@
 
     private void ClearLibrary()
     {
-        Library.Clear();
-        SetMessage("Gespeicherte Mediathek wurde entfernt.");
+        Library.RemoveLocalTracks();
+        SetMessage("Lokaler Musikordner wurde entfernt.");
     }
 
     private async Task EnrichMetadataAsync()
     {
         _metadataCancellation?.Dispose();
+        _nextcloudCancellation?.Cancel();
+        _nextcloudCancellation?.Dispose();
         _metadataCancellation = new CancellationTokenSource();
         _isEnriching = true;
         _metadataMessage = null;
@@ -229,7 +323,7 @@
         get
         {
             var value = Playback.Volume.ToString(System.Globalization.CultureInfo.InvariantCulture);
-            return $"background:linear-gradient(to right, var(--color-accent) {value}%, var(--color-surface-2) {value}%)";
+            return $"background-image:linear-gradient(to right, var(--color-accent) {value}%, var(--color-surface-2) {value}%)";
         }
     }
 

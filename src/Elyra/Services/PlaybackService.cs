@@ -14,15 +14,17 @@ public sealed class PlaybackService
     private readonly object _sync = new();
     private readonly AudioPlayerService _audio;
     private readonly PlayHistoryService _history;
+    private readonly NextcloudMusicService _nextcloud;
     private readonly PlaybackOrder _order = new();
     private List<Track> _queue = new();
 
-    public PlaybackService(AudioPlayerService audio, PlayHistoryService history)
+    public PlaybackService(AudioPlayerService audio, PlayHistoryService history, NextcloudMusicService nextcloud)
     {
         _audio = audio;
         _history = history;
-        // EndReached fires on a LibVLC callback thread — never call back into LibVLC
-        // from there (it can deadlock), so hop onto the thread pool before advancing.
+        _nextcloud = nextcloud;
+        // Keep track advancement independent of event delivery; a player event
+        // must never call back into LibVLC synchronously.
         _audio.TrackEnded += (_, _) => Task.Run(Next);
         // A missing/deleted file (e.g. a stale playlist entry) must not leave
         // "now playing" stuck forever — skip it like a track that ended.
@@ -30,6 +32,14 @@ public sealed class PlaybackService
     }
 
     public IReadOnlyList<Track> Queue => _queue;
+    public IReadOnlyList<Track> Upcoming
+    {
+        get
+        {
+            lock (_sync)
+                return _order.UpcomingIndices.Select(index => _queue[index]).ToList();
+        }
+    }
     public int CurrentIndex => _order.CurrentIndex;
     public Track? Current => CurrentIndex >= 0 && CurrentIndex < _queue.Count ? _queue[CurrentIndex] : null;
     public RadioStation? CurrentStation { get; private set; }
@@ -38,6 +48,7 @@ public sealed class PlaybackService
     public bool ShuffleEnabled => _order.ShuffleEnabled;
 
     public bool IsPlaying => _audio.IsPlaying;
+    public string? PlaybackError { get; private set; }
     public TimeSpan Position => _audio.Position;
     public TimeSpan Duration => _audio.Duration;
 
@@ -72,6 +83,7 @@ public sealed class PlaybackService
 
     public void PlayRadio(RadioStation station)
     {
+        PlaybackError = null;
         lock (_sync)
         {
             _queue = [];
@@ -85,6 +97,7 @@ public sealed class PlaybackService
 
     public void PlayVideo(VideoItem video)
     {
+        PlaybackError = null;
         lock (_sync)
         {
             _queue = [];
@@ -106,20 +119,94 @@ public sealed class PlaybackService
 
     private void StartCurrentTrack()
     {
-        string? filePath;
+        Track track;
         lock (_sync)
         {
             if (CurrentIndex < 0 || CurrentIndex >= _queue.Count) return;
-            filePath = _queue[CurrentIndex].FilePath;
+            track = _queue[CurrentIndex];
         }
-        _audio.Play(filePath);
-        _history.RecordPlay(filePath);
+        try
+        {
+            PlaybackError = null;
+            if (track.NextcloudPath is null) _audio.Play(track.FilePath);
+            else
+            {
+                var location = _nextcloud.GetPlaybackLocation(track);
+                if (location.StartsWith("http://127.0.0.1:", StringComparison.Ordinal)) _audio.PlayLocation(location);
+                else _audio.Play(location);
+            }
+            _history.RecordPlay(track.FilePath);
+        }
+        catch (Exception ex)
+        {
+            _audio.Stop();
+            PlaybackError = ex.Message;
+        }
         CurrentChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public void ToggleShuffle()
     {
         lock (_sync) _order.ToggleShuffle();
+        CurrentChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void PlayNext(Track track)
+    {
+        if (Current is null)
+        {
+            Play([track]);
+            return;
+        }
+
+        lock (_sync)
+        {
+            var queue = _queue.ToList();
+            if (_order.ShuffleEnabled)
+            {
+                queue.Add(track);
+                _order.AppendNextInShuffle();
+            }
+            else
+            {
+                queue.Insert(_order.CurrentIndex + 1, track);
+                _order.Reset(queue.Count, _order.CurrentIndex);
+            }
+            _queue = queue;
+        }
+        CurrentChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void RemoveUpcomingAt(int position)
+    {
+        lock (_sync)
+        {
+            if ((uint)position >= (uint)_order.UpcomingIndices.Count) return;
+            var queue = _queue.ToList();
+            queue.RemoveAt(_order.RemoveUpcomingAt(position));
+            _queue = queue;
+        }
+        CurrentChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void MoveUpcoming(int position, int direction)
+    {
+        lock (_sync)
+        {
+            var upcoming = _order.UpcomingIndices;
+            var next = position + direction;
+            if ((uint)position >= (uint)upcoming.Count || (uint)next >= (uint)upcoming.Count) return;
+
+            if (_order.ShuffleEnabled)
+                _order.MoveUpcoming(position, direction);
+            else
+            {
+                var queue = _queue.ToList();
+                (queue[upcoming[position]], queue[upcoming[next]]) =
+                    (queue[upcoming[next]], queue[upcoming[position]]);
+                _queue = queue;
+            }
+        }
         CurrentChanged?.Invoke(this, EventArgs.Empty);
     }
 

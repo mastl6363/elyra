@@ -24,9 +24,9 @@ public sealed class JsonLibraryStateStore : ILibraryStateStore
     {
         try
         {
-            return File.Exists(_filePath)
-                ? JsonSerializer.Deserialize<LibraryState>(File.ReadAllText(_filePath), JsonOptions)
-                : null;
+            if (!File.Exists(_filePath)) return null;
+            using var stream = File.OpenRead(_filePath);
+            return JsonSerializer.Deserialize<LibraryState>(stream, JsonOptions);
         }
         catch
         {
@@ -46,8 +46,16 @@ public sealed class JsonLibraryStateStore : ILibraryStateStore
             // Save() calls can't collide on the same temp file and make one File.Move
             // fail while the other's write is silently lost.
             var temporaryPath = $"{_filePath}.{Guid.NewGuid():N}.tmp";
-            File.WriteAllText(temporaryPath, JsonSerializer.Serialize(state, JsonOptions));
-            File.Move(temporaryPath, _filePath, true);
+            try
+            {
+                using (var stream = File.Create(temporaryPath))
+                    JsonSerializer.Serialize(stream, state, JsonOptions);
+                File.Move(temporaryPath, _filePath, true);
+            }
+            finally
+            {
+                if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
+            }
         }
         catch
         {

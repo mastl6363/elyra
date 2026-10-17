@@ -1,0 +1,64 @@
+@inject PlaybackService Playback
+@inject QueuePanelState QueueState
+@implements IDisposable
+
+@{
+    var current = Playback.Current;
+    var upcoming = Playback.Upcoming;
+}
+
+<aside class="absolute inset-y-0 right-0 z-30 flex w-full flex-col border-l border-line bg-surface shadow-2xl shadow-black/40 sm:w-96" aria-label="Warteschlange">
+    <header class="flex items-start justify-between border-b border-line px-5 py-5">
+        <div><h2 class="text-lg font-semibold">Warteschlange</h2><p class="mt-1 text-xs text-muted">@upcoming.Count Titel als Nächstes</p></div>
+        <button @onclick="QueueState.Close" class="flex h-10 w-10 items-center justify-center rounded-full text-muted hover:bg-surface-2 hover:text-ink" aria-label="Warteschlange schließen">✕</button>
+    </header>
+
+    @if (current is not null)
+    {
+        <section class="border-b border-line px-5 py-5">
+            <div class="mb-3 text-xs font-semibold uppercase tracking-wide text-accent">Jetzt läuft</div>
+            <div class="flex items-center gap-3">
+                <div class="h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-surface-2">
+                    @if (current.CoverArtDataUri is not null) { <img src="@current.CoverArtDataUri" alt="" class="h-full w-full object-cover" /> }
+                    else { <span class="flex h-full items-center justify-center text-2xl text-accent">♫</span> }
+                </div>
+                <div class="min-w-0"><div class="truncate text-sm font-semibold">@current.Title</div><div class="truncate text-xs text-muted">@current.Artist</div></div>
+            </div>
+        </section>
+    }
+
+    <div class="flex-1 overflow-y-auto px-3 py-4">
+        @if (upcoming.Count == 0)
+        {
+            <p class="px-2 py-8 text-center text-sm text-muted">Noch keine weiteren Titel. Mit „Als Nächstes“ kannst du hier Musik hinzufügen.</p>
+        }
+        else
+        {
+            @for (var i = 0; i < Math.Min(upcoming.Count, _visibleCount); i++)
+            {
+                var index = i;
+                var track = upcoming[index];
+                <div class="group flex items-center gap-2 rounded-xl px-2 py-2 hover:bg-surface-2">
+                    <span class="w-6 shrink-0 text-center text-xs text-muted">@(index + 1)</span>
+                    <div class="min-w-0 flex-1"><div class="truncate text-sm font-medium">@track.Title</div><div class="truncate text-xs text-muted">@track.Artist</div></div>
+                    <button @onclick="() => Playback.MoveUpcoming(index, -1)" disabled="@(index == 0)" class="flex h-8 w-8 items-center justify-center rounded-md text-muted hover:bg-line hover:text-ink disabled:opacity-30" aria-label="@track.Title nach oben verschieben" title="Nach oben">↑</button>
+                    <button @onclick="() => Playback.MoveUpcoming(index, 1)" disabled="@(index == upcoming.Count - 1)" class="flex h-8 w-8 items-center justify-center rounded-md text-muted hover:bg-line hover:text-ink disabled:opacity-30" aria-label="@track.Title nach unten verschieben" title="Nach unten">↓</button>
+                    <button @onclick="() => Playback.RemoveUpcomingAt(index)" class="flex h-8 w-8 items-center justify-center rounded-md text-muted hover:bg-line hover:text-ink" aria-label="@track.Title aus Warteschlange entfernen" title="Entfernen">✕</button>
+                </div>
+            }
+            @if (upcoming.Count > _visibleCount)
+            {
+                <button @onclick="() => _visibleCount += 40" class="mx-2 mt-3 rounded-full bg-surface-2 px-4 py-2 text-sm hover:bg-line">
+                    Weitere Titel anzeigen (@(upcoming.Count - _visibleCount) verbleibend)
+                </button>
+            }
+        }
+    </div>
+</aside>
+
+@code {
+    private int _visibleCount = 40;
+    protected override void OnInitialized() => Playback.CurrentChanged += OnChanged;
+    private void OnChanged(object? sender, EventArgs args) => InvokeAsync(StateHasChanged);
+    public void Dispose() => Playback.CurrentChanged -= OnChanged;
+}

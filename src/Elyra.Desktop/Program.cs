@@ -33,6 +33,9 @@ if (IsAlreadyRunning())
 
 File.WriteAllText(pidFilePath, $"{Environment.ProcessId}|{exePath}|{exeVersion}");
 
+// Xlib must be put in threaded mode before libVLC opens an X11 video output.
+LinuxVideoWindow.InitializeXlib();
+
 // Load the native libVLC binaries once, before any LibVLC object is created,
 // mirroring MauiProgram.cs on the MAUI targets.
 VlcRuntime.Initialize();
@@ -51,7 +54,9 @@ builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
 builder.Services.AddSingleton<AudioPlayerService>();
+builder.Services.AddSingleton<NextcloudMusicService>();
 builder.Services.AddSingleton<PlaybackService>();
+builder.Services.AddSingleton<QueuePanelState>();
 builder.Services.AddSingleton<PlayHistoryService>();
 builder.Services.AddSingleton<SuggestionService>();
 builder.Services.AddSingleton<ILibraryStateStore, JsonLibraryStateStore>();

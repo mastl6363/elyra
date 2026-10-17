@@ -20,11 +20,20 @@ public sealed class AudioPlayerService : IDisposable
         _libVLC = new LibVLC();
         _player = new MediaPlayer(_libVLC);
 
-        _player.Playing     += (_, _) => StateChanged?.Invoke(this, EventArgs.Empty);
-        _player.Paused      += (_, _) => StateChanged?.Invoke(this, EventArgs.Empty);
-        _player.Stopped     += (_, _) => StateChanged?.Invoke(this, EventArgs.Empty);
-        _player.EndReached  += (_, _) => TrackEnded?.Invoke(this, EventArgs.Empty);
-        _player.TimeChanged += (_, e) => PositionChanged?.Invoke(this, TimeSpan.FromMilliseconds(e.Time));
+        // LibVLC raises these on its own callback threads. Blazor may render
+        // immediately inside an event handler and read MediaPlayer properties.
+        // During a track transition that can wait on the same native VLC lock
+        // held by Play(Media), deadlocking both the UI and playback. Never run
+        // subscribers synchronously on a LibVLC callback thread.
+        _player.Playing     += (_, _) => Dispatch(() => StateChanged?.Invoke(this, EventArgs.Empty));
+        _player.Paused      += (_, _) => Dispatch(() => StateChanged?.Invoke(this, EventArgs.Empty));
+        _player.Stopped     += (_, _) => Dispatch(() => StateChanged?.Invoke(this, EventArgs.Empty));
+        _player.EndReached  += (_, _) => Dispatch(() => TrackEnded?.Invoke(this, EventArgs.Empty));
+        _player.TimeChanged += (_, e) =>
+        {
+            var position = TimeSpan.FromMilliseconds(e.Time);
+            Dispatch(() => PositionChanged?.Invoke(this, position));
+        };
     }
 
     /// <summary>Fires when play/pause/stop state flips.</summary>
@@ -38,6 +47,9 @@ public sealed class AudioPlayerService : IDisposable
 
     /// <summary>Fires when a requested local file no longer exists (e.g. a stale playlist entry).</summary>
     public event EventHandler? PlaybackFailed;
+
+    private static void Dispatch(Action action) => ThreadPool.QueueUserWorkItem(
+        static state => ((Action)state!).Invoke(), action);
 
     public bool IsPlaying => _player.IsPlaying;
     public MediaPlayer MediaPlayer => _player;

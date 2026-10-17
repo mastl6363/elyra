@@ -1,4 +1,4 @@
-@page "/"
+@page "/library"
 @inject MusicLibraryService Library
 @inject FolderPickerService FolderPicker
 @inject PlaybackService Playback
@@ -55,14 +55,14 @@
             <label class="relative min-w-64 flex-1">
                 <span class="sr-only">Mediathek durchsuchen</span>
                 <svg class="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
-                <input @bind="_searchText" @bind:event="oninput" placeholder="Künstler, Album oder Song suchen"
+                <input value="@_searchText" @oninput="OnSearchInput" placeholder="Diese Ansicht filtern"
                        class="w-full rounded-full border border-line bg-surface py-2 pl-10 pr-4 text-sm text-ink outline-none placeholder:text-muted focus:border-accent" />
             </label>
 
             <div class="inline-flex rounded-full bg-surface p-1 text-sm" aria-label="Dateiformat filtern">
                 @foreach (var option in FormatOptions)
                 {
-                    <button @onclick="() => _fileFilter = option.Value"
+                    <button @onclick="() => SetFormat(option.Value)"
                             class="rounded-full px-3 py-1 transition-colors @(_fileFilter == option.Value ? "bg-surface-2 text-ink" : "text-muted")">
                         @option.Label
                     </button>
@@ -72,7 +72,7 @@
             <div class="inline-flex rounded-full bg-surface p-1 text-sm" aria-label="Ansicht">
                 @foreach (var option in ViewOptions)
                 {
-                    <button @onclick="() => _view = option.Value"
+                    <button @onclick="() => SetView(option.Value)"
                             class="rounded-full px-3 py-1 transition-colors @(_view == option.Value ? "bg-surface-2 text-ink" : "text-muted")">
                         @option.Label
                     </button>
@@ -82,9 +82,9 @@
             @if (_view == LibraryView.Artists)
             {
                 <div class="inline-flex rounded-full bg-surface p-1 text-sm" aria-label="Sortierung">
-                    <button @onclick="() => _sortByTrackCount = false"
+                    <button @onclick="() => SetSort(false)"
                             class="rounded-full px-3 py-1 transition-colors @(_sortByTrackCount ? "text-muted" : "bg-surface-2 text-ink")">Künstler</button>
-                    <button @onclick="() => _sortByTrackCount = true"
+                    <button @onclick="() => SetSort(true)"
                             class="rounded-full px-3 py-1 transition-colors @(_sortByTrackCount ? "bg-surface-2 text-ink" : "text-muted")">Titelanzahl</button>
                 </div>
             }
@@ -102,7 +102,7 @@
             }
             else
             {
-                <p class="mt-4 text-xs text-muted">@VisibleArtists.Count von @Library.Artists.Count Künstlern</p>
+                <p class="mt-4 text-xs text-muted">@Math.Min(VisibleArtists.Count, _visibleLimit) von @VisibleArtists.Count Künstlern angezeigt</p>
                 <div class="mt-3 overflow-visible rounded-xl border border-line bg-surface/40">
                     <div class="grid grid-cols-[2rem_minmax(0,1fr)_7rem_6rem_2rem] gap-3 border-b border-line px-4 py-2 text-xs uppercase tracking-wide text-muted">
                         <span></span>
@@ -111,7 +111,7 @@
                         <span class="text-right">Titel</span>
                         <span></span>
                     </div>
-                    @foreach (var artist in VisibleArtists)
+                    @foreach (var artist in VisibleArtists.Take(_visibleLimit))
                     {
                         <article @onclick="() => OpenArtist(artist.Id)"
                                  class="group grid cursor-pointer grid-cols-[2rem_minmax(0,1fr)_7rem_6rem_2rem] items-center gap-3 border-b border-line/70 px-4 py-3 transition-colors last:border-b-0 hover:bg-surface-2">
@@ -120,7 +120,12 @@
                                     aria-label="Alle Titel von @artist.Name abspielen">
                                 <svg class="h-4 w-4 translate-x-px" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
                             </button>
-                            <div class="min-w-0">
+                            <div class="flex min-w-0 items-center gap-3">
+                                <div class="h-9 w-9 shrink-0 overflow-hidden rounded-lg bg-surface-2">
+                                    @if (artist.CoverArtDataUri is not null) { <img src="@artist.CoverArtDataUri" alt="" loading="lazy" class="h-full w-full object-cover" /> }
+                                    else { <span class="flex h-full items-center justify-center text-accent">♫</span> }
+                                </div>
+                                <div class="min-w-0">
                                 <h2 class="truncate text-sm font-medium text-ink group-hover:text-accent">@artist.Name</h2>
                                 @if (artist.Albums.Count > 0)
                                 {
@@ -130,6 +135,7 @@
                                 {
                                     <p class="mt-0.5 text-xs text-muted">Songs ohne Albumangabe</p>
                                 }
+                                </div>
                             </div>
                             <span class="text-right text-sm tabular-nums text-muted">@artist.AlbumCount</span>
                             <span class="text-right text-sm tabular-nums text-muted">@artist.TrackCount</span>
@@ -137,6 +143,10 @@
                         </article>
                     }
                 </div>
+                @if (VisibleArtists.Count > _visibleLimit)
+                {
+                    <button @onclick="ShowMore" class="mt-4 rounded-full bg-surface-2 px-5 py-2.5 text-sm hover:bg-line">Weitere Künstler anzeigen</button>
+                }
             }
         }
         else if (_view == LibraryView.Genres)
@@ -151,7 +161,7 @@
             }
             else
             {
-                <p class="mt-4 text-xs text-muted">@VisibleGenres.Count von @Library.Genres.Count Genres</p>
+                <p class="mt-4 text-xs text-muted">@Math.Min(VisibleGenres.Count, _visibleLimit) von @VisibleGenres.Count Genres angezeigt</p>
                 <div class="mt-3 overflow-visible rounded-xl border border-line bg-surface/40">
                     <div class="grid grid-cols-[minmax(0,1fr)_7rem_6rem_2rem] gap-3 border-b border-line px-4 py-2 text-xs uppercase tracking-wide text-muted">
                         <span>Genre</span>
@@ -159,7 +169,7 @@
                         <span class="text-right">Titel</span>
                         <span></span>
                     </div>
-                    @foreach (var genre in VisibleGenres)
+                    @foreach (var genre in VisibleGenres.Take(_visibleLimit))
                     {
                         <article @onclick="() => OpenGenre(genre.Id)"
                                  class="group grid cursor-pointer grid-cols-[minmax(0,1fr)_7rem_6rem_2rem] items-center gap-3 border-b border-line/70 px-4 py-3 transition-colors last:border-b-0 hover:bg-surface-2">
@@ -170,6 +180,10 @@
                         </article>
                     }
                 </div>
+                @if (VisibleGenres.Count > _visibleLimit)
+                {
+                    <button @onclick="ShowMore" class="mt-4 rounded-full bg-surface-2 px-5 py-2.5 text-sm hover:bg-line">Weitere Genres anzeigen</button>
+                }
             }
         }
         else
@@ -184,25 +198,24 @@
             }
             else
             {
-                <p class="mt-4 text-xs text-muted">@VisibleAlbums.Count von @Library.Albums.Count Alben</p>
-                <div class="mt-3 overflow-visible rounded-xl border border-line bg-surface/40">
-                    <div class="grid grid-cols-[minmax(0,1fr)_minmax(0,10rem)_6rem_2rem] gap-3 border-b border-line px-4 py-2 text-xs uppercase tracking-wide text-muted">
-                        <span>Album</span>
-                        <span>Künstler</span>
-                        <span class="text-right">Titel</span>
-                        <span></span>
-                    </div>
-                    @foreach (var album in VisibleAlbums)
+                <p class="mt-4 text-xs text-muted">@Math.Min(VisibleAlbums.Count, _visibleLimit) von @VisibleAlbums.Count Alben angezeigt</p>
+                <div class="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                    @foreach (var album in VisibleAlbums.Take(_visibleLimit))
                     {
-                        <article @onclick="() => OpenAlbum(album.Id)"
-                                 class="group grid cursor-pointer grid-cols-[minmax(0,1fr)_minmax(0,10rem)_6rem_2rem] items-center gap-3 border-b border-line/70 px-4 py-3 transition-colors last:border-b-0 hover:bg-surface-2">
-                            <h2 class="min-w-0 truncate text-sm font-medium text-ink group-hover:text-accent">@album.Title</h2>
-                            <p class="truncate text-sm text-muted">@album.Artist</p>
-                            <span class="text-right text-sm tabular-nums text-muted">@album.TrackCount</span>
-                            <svg class="h-4 w-4 text-muted transition-transform group-hover:translate-x-0.5 group-hover:text-ink" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6" /></svg>
-                        </article>
+                        <button @onclick="() => OpenAlbum(album.Id)" class="group min-w-0 rounded-xl p-2 text-left transition hover:bg-surface">
+                            <div class="aspect-square overflow-hidden rounded-xl bg-gradient-to-br from-accent/35 to-surface-2 shadow-lg shadow-black/15">
+                                @if (album.CoverArtDataUri is not null) { <img src="@album.CoverArtDataUri" alt="" loading="lazy" class="h-full w-full object-cover transition duration-300 group-hover:scale-105" /> }
+                                else { <span class="flex h-full items-center justify-center text-5xl text-accent/80">♫</span> }
+                            </div>
+                            <span class="mt-2 block truncate text-sm font-semibold">@album.Title</span>
+                            <span class="block truncate text-xs text-muted">@album.Artist · @album.TrackCount Titel</span>
+                        </button>
                     }
                 </div>
+                @if (VisibleAlbums.Count > _visibleLimit)
+                {
+                    <button @onclick="ShowMore" class="mt-4 rounded-full bg-surface-2 px-5 py-2.5 text-sm hover:bg-line">Weitere Alben anzeigen</button>
+                }
             }
         }
     }
@@ -216,6 +229,7 @@
     private AudioFileFilter _fileFilter = AudioFileFilter.All;
     private LibraryView _view = LibraryView.Artists;
     private string? _importError;
+    private int _visibleLimit = 60;
 
     private static readonly (AudioFileFilter Value, string Label)[] FormatOptions =
     [
@@ -275,7 +289,19 @@
     {
         _searchText = "";
         _fileFilter = AudioFileFilter.All;
+        _visibleLimit = 60;
     }
+
+    private void OnSearchInput(ChangeEventArgs args)
+    {
+        _searchText = args.Value?.ToString() ?? "";
+        _visibleLimit = 60;
+    }
+
+    private void SetFormat(AudioFileFilter value) { _fileFilter = value; _visibleLimit = 60; }
+    private void SetView(LibraryView value) { _view = value; _visibleLimit = 60; }
+    private void SetSort(bool value) { _sortByTrackCount = value; _visibleLimit = 60; }
+    private void ShowMore() => _visibleLimit += 60;
 
     public void Dispose() => Library.Changed -= OnLibraryChanged;
 }

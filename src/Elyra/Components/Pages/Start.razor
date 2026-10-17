@@ -1,0 +1,111 @@
+@page "/"
+@inject MusicLibraryService Library
+@inject PlayHistoryService History
+@inject SuggestionService Suggestions
+@inject PlaybackService Playback
+@inject NavigationManager Nav
+@implements IDisposable
+
+@{
+    var recent = Library.Tracks
+        .Where(track => History.GetLastPlayed(track.FilePath) is not null)
+        .OrderByDescending(track => History.GetLastPlayed(track.FilePath))
+        .Take(8).ToList();
+    var albums = Library.Albums
+        .OrderByDescending(album => album.Tracks.Max(track => History.GetLastPlayed(track.FilePath) ?? DateTimeOffset.MinValue))
+        .ThenBy(album => album.Title, StringComparer.CurrentCultureIgnoreCase)
+        .Take(8).ToList();
+    var mostPlayed = Suggestions.MostPlayed(6);
+}
+
+<div class="mx-auto max-w-7xl px-8 py-8">
+    <header class="flex flex-wrap items-end justify-between gap-4">
+        <div>
+            <p class="text-xs font-semibold uppercase tracking-[0.2em] text-accent">Deine Musik</p>
+            <h1 class="mt-2 text-4xl font-semibold tracking-tight">Willkommen bei Elyra</h1>
+            <p class="mt-2 text-sm text-muted">@Library.Tracks.Count Titel · @Library.Albums.Count Alben · @Library.Artists.Count Künstler</p>
+        </div>
+        <a href="library" class="rounded-full bg-accent px-5 py-2.5 text-sm font-semibold text-white transition hover:brightness-110">Mediathek öffnen</a>
+    </header>
+
+    @if (Library.Tracks.Count == 0)
+    {
+        <section class="mt-12 rounded-2xl border border-line bg-surface p-8">
+            <h2 class="text-xl font-semibold">Deine Sammlung beginnt hier</h2>
+            <p class="mt-2 max-w-xl text-sm text-muted">Wähle in der Mediathek einen Ordner mit MP3- oder FLAC-Dateien. Danach findest du hier deine zuletzt gehörten Titel und Alben.</p>
+            <a href="library" class="mt-5 inline-block rounded-full bg-accent px-5 py-2.5 text-sm font-medium text-white">Zum Musikordner</a>
+        </section>
+    }
+    else
+    {
+        @if (recent.Count > 0)
+        {
+            <section class="mt-10">
+                <div class="mb-4 flex items-end justify-between gap-3">
+                    <div><h2 class="text-xl font-semibold">Zuletzt gehört</h2><p class="mt-1 text-sm text-muted">Direkt dort weitermachen, wo du aufgehört hast.</p></div>
+                    <button @onclick="() => Playback.Play(recent)" class="rounded-full bg-surface-2 px-4 py-2 text-sm hover:bg-line">Alle abspielen</button>
+                </div>
+                <div class="grid gap-2 md:grid-cols-2">
+                    @for (var i = 0; i < recent.Count; i++)
+                    {
+                        var index = i;
+                        var track = recent[index];
+                        <button @onclick="() => Playback.Play(recent, index)" class="flex min-w-0 items-center gap-3 rounded-xl border border-line bg-surface p-2 text-left transition hover:border-accent/50 hover:bg-surface-2">
+                            <div class="h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-surface-2">
+                                @if (track.CoverArtDataUri is not null) { <img src="@track.CoverArtDataUri" alt="" loading="lazy" class="h-full w-full object-cover" /> }
+                                else { <span class="flex h-full items-center justify-center text-xl text-accent">♫</span> }
+                            </div>
+                            <span class="min-w-0 flex-1"><span class="block truncate text-sm font-medium">@track.Title</span><span class="block truncate text-xs text-muted">@track.Artist</span></span>
+                            <span class="pr-2 text-xs text-muted">▶</span>
+                        </button>
+                    }
+                </div>
+            </section>
+        }
+
+        @if (albums.Count > 0)
+        {
+            <section class="mt-10">
+                <div class="mb-4 flex items-end justify-between gap-3"><h2 class="text-xl font-semibold">Alben entdecken</h2><a href="library" class="text-sm text-accent hover:underline">Alle Alben</a></div>
+                <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+                    @foreach (var album in albums)
+                    {
+                        <button @onclick="() => OpenAlbum(album.Id)" class="group min-w-0 rounded-xl p-2 text-left transition hover:bg-surface">
+                            <div class="aspect-square overflow-hidden rounded-xl bg-gradient-to-br from-accent/35 to-surface-2 shadow-lg shadow-black/15">
+                                @if (album.CoverArtDataUri is not null) { <img src="@album.CoverArtDataUri" alt="" loading="lazy" class="h-full w-full object-cover transition duration-300 group-hover:scale-105" /> }
+                                else { <span class="flex h-full items-center justify-center text-5xl text-accent/80">♫</span> }
+                            </div>
+                            <span class="mt-2 block truncate text-sm font-semibold">@album.Title</span>
+                            <span class="block truncate text-xs text-muted">@album.Artist</span>
+                        </button>
+                    }
+                </div>
+            </section>
+        }
+
+        @if (mostPlayed.Count > 0)
+        {
+            <section class="mt-10 pb-6">
+                <div class="mb-4 flex items-end justify-between gap-3"><h2 class="text-xl font-semibold">Deine Favoriten</h2><a href="playlists" class="text-sm text-accent hover:underline">Wiedergabelisten</a></div>
+                <TrackList Tracks="mostPlayed" ShowAdd="true" />
+            </section>
+        }
+    }
+</div>
+
+@code {
+    protected override void OnInitialized()
+    {
+        Library.Changed += OnChanged;
+        History.Changed += OnChanged;
+    }
+
+    private void OnChanged(object? sender, EventArgs args) => InvokeAsync(StateHasChanged);
+    private void OpenAlbum(string id) => Nav.NavigateTo($"/album/{id}");
+
+    public void Dispose()
+    {
+        Library.Changed -= OnChanged;
+        History.Changed -= OnChanged;
+    }
+}

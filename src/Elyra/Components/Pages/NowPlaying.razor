@@ -1,12 +1,15 @@
 @page "/now-playing"
 @inject PlaybackService Playback
 @inject AudioPlayerService Audio
+@inject QueuePanelState QueueState
+@inject VideoPlaybackService VideoPlayback
 @implements IDisposable
 
 @{
     var current = Playback.Current;
     var station = Playback.CurrentStation;
     var video = Playback.CurrentVideo;
+    var upcoming = Playback.Upcoming;
 }
 
 <div class="px-8 py-8">
@@ -60,9 +63,14 @@
             <h1 class="mt-2 max-w-xl truncate text-2xl font-semibold tracking-tight">@video.Title</h1>
             <p class="mt-1 text-sm text-muted">Die Wiedergabe läuft im nativen Videofenster.</p>
 
+            <div class="mt-4 flex gap-2">
+                <button @onclick="() => VideoPlayback.OpenAsync(video)" class="rounded-full bg-accent px-4 py-2 text-sm font-medium text-white hover:opacity-90">Videofenster anzeigen</button>
+                <button @onclick="VideoPlayback.CloseAsync" class="rounded-full bg-surface-2 px-4 py-2 text-sm hover:bg-line">Film schließen</button>
+            </div>
+
             <div class="mt-6 flex w-full max-w-md items-center gap-2 text-xs tabular-nums text-muted">
                 <span>@Format(Audio.Position)</span>
-                <input type="range" class="elyra-range flex-1" min="0" max="@MaxSeconds" value="@CurrentSeconds"
+                <input type="range" class="elyra-range flex-1" min="0" max="@MaxSeconds" value="@CurrentSeconds" aria-label="Wiedergabeposition"
                        style="@ProgressStyle" @onchange="OnSeek" />
                 <span>@Format(Audio.Duration)</span>
             </div>
@@ -73,7 +81,7 @@
     else if (current is not null)
     {
         <div class="flex flex-col items-center text-center">
-            <div class="h-64 w-64 overflow-hidden rounded-2xl bg-surface shadow-2xl shadow-black/40">
+            <div class="h-72 w-72 overflow-hidden rounded-3xl bg-gradient-to-br from-accent/35 to-surface-2 shadow-2xl shadow-black/50 lg:h-80 lg:w-80">
                 @if (current.CoverArtDataUri is not null)
                 {
                     <img src="@current.CoverArtDataUri" alt="@current.Title" class="h-full w-full object-cover" />
@@ -88,12 +96,12 @@
                 }
             </div>
 
-            <h1 class="mt-6 max-w-xl truncate text-2xl font-semibold tracking-tight">@current.Title</h1>
-            <p class="mt-1 text-sm text-muted">@current.Artist · @current.Album</p>
+            <h1 class="mt-7 max-w-xl truncate text-3xl font-semibold tracking-tight">@current.Title</h1>
+            <p class="mt-1 text-base text-muted">@current.Artist · @current.Album</p>
 
             <div class="mt-6 flex w-full max-w-md items-center gap-2 text-xs tabular-nums text-muted">
                 <span>@Format(Audio.Position)</span>
-                <input type="range" class="elyra-range flex-1" min="0" max="@MaxSeconds" value="@CurrentSeconds"
+                <input type="range" class="elyra-range flex-1" min="0" max="@MaxSeconds" value="@CurrentSeconds" aria-label="Wiedergabeposition"
                        style="@ProgressStyle" @onchange="OnSeek" />
                 <span>@Format(Audio.Duration)</span>
             </div>
@@ -103,11 +111,14 @@
             </div>
         </div>
 
-        @if (Playback.Queue.Count > 0)
+        @if (upcoming.Count > 0)
         {
             <div class="mx-auto mt-12 max-w-2xl">
-                <h2 class="mb-2 px-3 text-xs font-medium uppercase tracking-wide text-muted">Als Nächstes</h2>
-                <TrackList Tracks="Playback.Queue" ShowAdd="true" />
+                <div class="mb-2 flex items-center justify-between px-3"><h2 class="text-xs font-medium uppercase tracking-wide text-muted">Als Nächstes</h2><button @onclick="QueueState.Open" class="text-sm text-accent hover:underline">Warteschlange öffnen</button></div>
+                @foreach (var track in upcoming.Take(5))
+                {
+                    <div class="flex items-center justify-between gap-4 border-b border-line px-3 py-2 text-sm last:border-b-0"><span class="truncate">@track.Title <span class="text-muted">· @track.Artist</span></span><span class="shrink-0 text-xs text-muted">@track.DurationLabel</span></div>
+                }
             </div>
         }
     }
@@ -140,7 +151,7 @@
             var d = Audio.Duration.TotalMilliseconds;
             var pct = d > 0 ? Audio.Position.TotalMilliseconds / d * 100 : 0;
             var p = pct.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
-            return $"background:linear-gradient(to right, var(--color-accent) {p}%, var(--color-surface-2) {p}%)";
+            return $"background-image:linear-gradient(to right, var(--color-accent) {p}%, var(--color-surface-2) {p}%)";
         }
     }
 
