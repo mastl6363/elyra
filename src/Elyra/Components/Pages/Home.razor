@@ -5,8 +5,8 @@
 @inject NavigationManager Nav
 @implements IDisposable
 
-<div class="px-8 py-6">
-    <header class="flex items-end justify-between gap-4">
+<div class="@(OperatingSystem.IsAndroid() ? "px-4 py-5" : "px-8 py-6")">
+    <header class="flex flex-wrap items-end justify-between gap-4">
         <div>
             <h1 class="text-2xl font-semibold tracking-tight">Mediathek</h1>
             <p class="mt-1 text-sm text-muted">
@@ -104,17 +104,20 @@
             {
                 <p class="mt-4 text-xs text-muted">@Math.Min(VisibleArtists.Count, _visibleLimit) von @VisibleArtists.Count Künstlern angezeigt</p>
                 <div class="mt-3 overflow-visible rounded-xl border border-line bg-surface/40">
-                    <div class="grid grid-cols-[2rem_minmax(0,1fr)_2rem] gap-3 border-b border-line px-4 py-2 text-xs uppercase tracking-wide text-muted sm:grid-cols-[2rem_minmax(0,1fr)_7rem_6rem_2rem]">
+                    <div class="grid gap-3 border-b border-line px-4 py-2 text-xs uppercase tracking-wide text-muted @(OperatingSystem.IsAndroid() ? "grid-cols-[2rem_minmax(0,1fr)_2rem]" : "grid-cols-[2rem_minmax(0,1fr)_7rem_6rem_2rem]")">
                         <span></span>
                         <span>Künstler</span>
-                        <span class="hidden text-right sm:block">Alben</span>
-                        <span class="hidden text-right sm:block">Titel</span>
+                        @if (!OperatingSystem.IsAndroid())
+                        {
+                            <span class="text-right">Alben</span>
+                            <span class="text-right">Titel</span>
+                        }
                         <span></span>
                     </div>
                     @foreach (var artist in VisibleArtists.Take(_visibleLimit))
                     {
                         <article @onclick="() => OpenArtist(artist.Id)"
-                                 class="group grid cursor-pointer grid-cols-[2rem_minmax(0,1fr)_2rem] items-center gap-3 border-b border-line/70 px-4 py-3 transition-colors last:border-b-0 hover:bg-surface-2 sm:grid-cols-[2rem_minmax(0,1fr)_7rem_6rem_2rem]">
+                                 class="group grid cursor-pointer items-center gap-3 border-b border-line/70 px-4 py-3 transition-colors last:border-b-0 hover:bg-surface-2 @(OperatingSystem.IsAndroid() ? "grid-cols-[2rem_minmax(0,1fr)_2rem]" : "grid-cols-[2rem_minmax(0,1fr)_7rem_6rem_2rem]")">
                             <button @onclick="() => Playback.Play(artist.Tracks)" @onclick:stopPropagation
                                     class="flex h-8 w-8 items-center justify-center rounded-full text-muted transition-colors hover:bg-accent hover:text-white"
                                     aria-label="Alle Titel von @artist.Name abspielen">
@@ -125,8 +128,8 @@
                                     @if (artist.CoverArtDataUri is not null) { <img src="@artist.CoverArtDataUri" alt="" loading="lazy" class="h-full w-full object-cover" /> }
                                     else { <span class="flex h-full items-center justify-center text-accent">♫</span> }
                                 </div>
-                                <div class="min-w-0">
-                                <h2 class="truncate text-sm font-medium text-ink group-hover:text-accent">@artist.Name</h2>
+                                <div class="min-w-0 flex-1">
+                                <h2 class="font-medium text-ink group-hover:text-accent @(OperatingSystem.IsAndroid() ? "break-words text-base" : "truncate text-sm")">@artist.Name</h2>
                                 @if (artist.Albums.Count > 0)
                                 {
                                     <p class="mt-0.5 truncate text-xs text-muted">@string.Join(" · ", artist.Albums.Take(3).Select(album => album.Title))</p>
@@ -137,8 +140,11 @@
                                 }
                                 </div>
                             </div>
-                            <span class="hidden text-right text-sm tabular-nums text-muted sm:block">@artist.AlbumCount</span>
-                            <span class="hidden text-right text-sm tabular-nums text-muted sm:block">@artist.TrackCount</span>
+                            @if (!OperatingSystem.IsAndroid())
+                            {
+                                <span class="text-right text-sm tabular-nums text-muted">@artist.AlbumCount</span>
+                                <span class="text-right text-sm tabular-nums text-muted">@artist.TrackCount</span>
+                            }
                             <svg class="h-4 w-4 text-muted transition-transform group-hover:translate-x-0.5 group-hover:text-ink" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6" /></svg>
                         </article>
                     }

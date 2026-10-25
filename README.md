@@ -58,7 +58,7 @@ MSBuild-Target `TailwindBuild`.
 ## Android auf dem eigenen Gerät
 
 Für ARM64-Geräte erzeugt `packaging/android/build-apk.sh` eine signierte APK unter
-`artifacts/android/elyra-1.5.0-arm64.apk`. Der Build benötigt das .NET Android
+`artifacts/android/elyra-1.5.1-arm64.apk`. Der Build benötigt das .NET Android
 Workload und einen Android-Signierschlüssel. Standardmäßig wird der lokale
 Debug-Keystore (`~/.android/debug.keystore`) verwendet. Für spätere Updates
 muss derselbe Schlüssel erhalten bleiben. Ein eigener Schlüssel kann über
@@ -68,7 +68,7 @@ muss derselbe Schlüssel erhalten bleiben. Ein eigener Schlüssel kann über
 ```bash
 ./packaging/android/build-apk.sh
 adb devices
-adb -s <geraete-id> install -r artifacts/android/elyra-1.5.0-arm64.apk
+adb -s <geraete-id> install -r artifacts/android/elyra-1.5.1-arm64.apk
 ```
 
 Auf Android wählt „Ordner auswählen“ einen Musikordner über den Systemdialog.
