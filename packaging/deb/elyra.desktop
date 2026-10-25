@@ -2,7 +2,7 @@
 Type=Application
 Name=Elyra
 GenericName=Musikplayer
-Comment=Moderner, werbefreier Musikplayer für lokale Sammlungen (MP3, FLAC)
+Comment=Moderner, werbefreier Musikplayer für lokale Sammlungen (MP3, FLAC, OGG)
 Exec=/usr/bin/elyra
 Icon=elyra
 Terminal=false

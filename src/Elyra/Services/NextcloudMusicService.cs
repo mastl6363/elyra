@@ -127,7 +127,8 @@ public sealed class NextcloudMusicService : IDisposable
                 }
                 var ext = Path.GetExtension(path);
                 if (!ext.Equals(".mp3", StringComparison.OrdinalIgnoreCase) &&
-                    !ext.Equals(".flac", StringComparison.OrdinalIgnoreCase)) continue;
+                    !ext.Equals(".flac", StringComparison.OrdinalIgnoreCase) &&
+                    !ext.Equals(".ogg", StringComparison.OrdinalIgnoreCase)) continue;
                 var parts = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
                 var title = Path.GetFileNameWithoutExtension(path);
                 var album = parts.Length >= 2 ? parts[^2] : "";
@@ -258,7 +259,12 @@ public sealed class NextcloudMusicService : IDisposable
             context.Response.StatusCode = (int)upstream.StatusCode;
             if (!upstream.IsSuccessStatusCode) return;
             context.Response.ContentType = upstream.Content.Headers.ContentType?.ToString() ??
-                (Path.GetExtension(track.NextcloudPath!).Equals(".flac", StringComparison.OrdinalIgnoreCase) ? "audio/flac" : "audio/mpeg");
+                Path.GetExtension(track.NextcloudPath!).ToLowerInvariant() switch
+                {
+                    ".flac" => "audio/flac",
+                    ".ogg" => "audio/ogg",
+                    _ => "audio/mpeg"
+                };
             if (upstream.Content.Headers.ContentLength is long length) context.Response.ContentLength64 = length;
             if (upstream.Content.Headers.ContentRange is not null)
                 context.Response.Headers["Content-Range"] = upstream.Content.Headers.ContentRange.ToString();

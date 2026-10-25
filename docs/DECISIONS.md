@@ -2,6 +2,12 @@
 
 Kurzes Log der weichenstellenden Entscheidungen. Neueste oben.
 
+## 2026-10-25 — OGG Vorbis in der Mediathek
+
+- **OGG Vorbis lokal und über Nextcloud.** Dateien mit `.ogg` werden wie MP3
+  und FLAC gescannt, mit TagLib# eingelesen und über LibVLC abgespielt. Der
+  Formatfilter berücksichtigt auch die Dateiendung von Nextcloud-Titeln.
+
 ## 2026-10-18 — Nextcloud-Musik per WebDAV
 
 - **Bedarfsgesteuertes Streaming.** Elyra liest die Ordnerstruktur mit WebDAV

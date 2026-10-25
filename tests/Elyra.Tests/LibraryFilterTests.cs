@@ -62,6 +62,21 @@ public sealed class LibraryFilterTests
         Assert.Equal("Daft Punk", Assert.Single(LibraryFilter.Apply(artists, null, AudioFileFilter.Mp3)).Name);
     }
 
+    [Fact]
+    public void Apply_OggFilterIncludesLocalAndNextcloudPaths()
+    {
+        var local = Track("Local", "Artist", "Album", "song.OGG");
+        var remote = new Track
+        {
+            FilePath = "nextcloud:123", NextcloudPath = "Music/Remote.ogg",
+            Title = "Remote", Artist = "Artist", Album = "Album"
+        };
+        var album = Album("Album", "Artist", local, remote);
+
+        Assert.Single(LibraryFilter.Apply([album], null, AudioFileFilter.Ogg));
+        Assert.Empty(LibraryFilter.Apply([album], null, AudioFileFilter.Mp3));
+    }
+
     private static Album Album(string title, string artist, params Track[] tracks) => new()
     {
         Id = title,

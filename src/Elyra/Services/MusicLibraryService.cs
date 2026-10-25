@@ -11,7 +11,7 @@ public sealed class MusicLibraryService
 {
     private readonly ILibraryStateStore _stateStore;
     private static readonly HashSet<string> SupportedExtensions =
-        new(StringComparer.OrdinalIgnoreCase) { ".mp3", ".flac" };
+        new(StringComparer.OrdinalIgnoreCase) { ".mp3", ".flac", ".ogg" };
 
     public IReadOnlyList<Track> Tracks { get; private set; } = Array.Empty<Track>();
     private IReadOnlyList<Album> _albums = Array.Empty<Album>();

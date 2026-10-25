@@ -7,6 +7,6 @@ Depends: libvlc5, vlc-plugin-base, vlc-plugin-video-output, libx11-6, zenity, li
 Maintainer: Elyra Contributors <noreply@example.com>
 Homepage: https://github.com/mastl6363/elyra
 Description: Moderner Player für Musik, Nextcloud und Filme
- Elyra spielt lokale und per Nextcloud-WebDAV gestreamte MP3-/FLAC-Musik
+ Elyra spielt lokale und per Nextcloud-WebDAV gestreamte MP3-/FLAC-/OGG-Musik
  sowie Videodateien mit LibVLC ab. Dazu kommen Wiedergabelisten,
  Internetradio und ein optionaler MusicBrainz-Metadatenabgleich.

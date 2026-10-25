@@ -23,7 +23,8 @@ public sealed class NextcloudMusicServiceTests
                 Username = "alice",
                 MusicFolder = "Music"
             }, "private-app-password");
-            var track = Assert.Single(tracks);
+            var track = Assert.Single(tracks, t => t.NextcloudPath!.EndsWith(".mp3"));
+            Assert.Contains(tracks, t => t.NextcloudPath!.EndsWith(".ogg"));
             Assert.Equal("Artist", track.Artist);
             Assert.Equal("Album", track.Album);
             Assert.Equal("Song", track.Title);
@@ -97,7 +98,7 @@ public sealed class NextcloudMusicServiceTests
                 var folder = path.TrimEnd('/');
                 string[] children = folder.EndsWith("/Music") ? [folder + "/Artist/"] :
                     folder.EndsWith("/Artist") ? [folder + "/Album/"] :
-                    folder.EndsWith("/Album") ? [folder + "/Song.mp3"] : [];
+                    folder.EndsWith("/Album") ? [folder + "/Song.mp3", folder + "/Tone.ogg"] : [];
                 var responses = string.Join("", children.Select(child =>
                     $"<d:response><d:href>{child}</d:href><d:propstat><d:status>HTTP/1.1 200 OK</d:status><d:prop><d:resourcetype>{(child.EndsWith('/') ? "<d:collection/>" : "")}</d:resourcetype><d:getetag>\"etag1\"</d:getetag></d:prop></d:propstat></d:response>"));
                 return Task.FromResult(new HttpResponseMessage((HttpStatusCode)207)

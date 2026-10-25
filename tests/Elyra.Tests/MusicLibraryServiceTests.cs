@@ -6,6 +6,21 @@ namespace Elyra.Tests;
 public sealed class MusicLibraryServiceTests
 {
     [Fact]
+    public async Task ImportFolder_ReadsOggVorbisTags()
+    {
+        var library = new MusicLibraryService(new InMemoryStateStore());
+        var folder = Path.Combine(AppContext.BaseDirectory, "Fixtures");
+
+        await library.ImportFolderAsync(folder);
+
+        var track = Assert.Single(library.Tracks);
+        Assert.Equal("Test Tone", track.Title);
+        Assert.Equal("Test Artist", track.Artist);
+        Assert.Equal("Test Album", track.Album);
+        Assert.True(track.Duration > TimeSpan.Zero);
+    }
+
+    [Fact]
     public void Constructor_RestoresSavedFolderAndTracks()
     {
         var store = new InMemoryStateStore

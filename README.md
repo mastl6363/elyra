@@ -1,6 +1,6 @@
 # Elyra — Musik Player
 
-Moderner, performanter, werbefreier Musikplayer für lokale Sammlungen (MP3, FLAC).
+Moderner, performanter, werbefreier Musikplayer für lokale Sammlungen (MP3, FLAC, OGG Vorbis).
 Design auf dem Niveau von Apple Music / Spotify, umgesetzt mit Web-Technologien in
 einer nativen Cross-Platform-App.
 
@@ -13,7 +13,7 @@ einer nativen Cross-Platform-App.
 | App-Framework  | .NET MAUI Blazor Hybrid             |
 | Frontend / UI  | Razor + HTML + Tailwind CSS (npm)   |
 | Kern-Logik     | C# / .NET                           |
-| Audio-Engine   | LibVLCSharp (FLAC + MP3, gapless)   |
+| Audio-Engine   | LibVLCSharp (MP3, FLAC, OGG Vorbis) |
 | Metadaten/ID3  | TagLib# (TagLibSharp)               |
 | Lokaler Cache  | JSON (AppData), SQLite ab Phase 2   |
 
@@ -88,7 +88,7 @@ derzeit nur im Windows-Build verfügbar.
 Unter **Einstellungen → Nextcloud-Musik** die Server-Adresse, den Benutzernamen,
 den Musikordner und ein Nextcloud-App-Passwort eintragen. Das App-Passwort lässt
 sich in Nextcloud unter **Persönliche Einstellungen → Sicherheit** erstellen.
-Elyra liest MP3- und FLAC-Dateien per WebDAV ein, streamt sie bei Bedarf und
+Elyra liest MP3-, FLAC- und OGG-Dateien per WebDAV ein, streamt sie bei Bedarf und
 speichert vollständig abgespielte/abgerufene Dateien in einem lokalen Cache
 von maximal 1 GiB. Beim nächsten Start bleiben Server-Adresse, Musikordner und
 Mediathek erhalten; das App-Passwort muss erneut eingegeben werden. Bereits

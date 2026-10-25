@@ -6,7 +6,8 @@ public enum AudioFileFilter
 {
     All,
     Mp3,
-    Flac
+    Flac,
+    Ogg
 }
 
 public static class LibraryFilter
@@ -87,9 +88,17 @@ public static class LibraryFilter
     private static bool Contains(string value, string query) =>
         value.Contains(query, StringComparison.CurrentCultureIgnoreCase);
 
-    private static bool MatchesFormat(Track track, AudioFileFilter fileFilter) =>
-        fileFilter == AudioFileFilter.All || string.Equals(
-            Path.GetExtension(track.FilePath),
-            fileFilter == AudioFileFilter.Mp3 ? ".mp3" : ".flac",
+    private static bool MatchesFormat(Track track, AudioFileFilter fileFilter)
+    {
+        if (fileFilter == AudioFileFilter.All) return true;
+        var extension = fileFilter switch
+        {
+            AudioFileFilter.Mp3 => ".mp3",
+            AudioFileFilter.Flac => ".flac",
+            AudioFileFilter.Ogg => ".ogg",
+            _ => ""
+        };
+        return string.Equals(Path.GetExtension(track.NextcloudPath ?? track.FilePath), extension,
             StringComparison.OrdinalIgnoreCase);
+    }
 }

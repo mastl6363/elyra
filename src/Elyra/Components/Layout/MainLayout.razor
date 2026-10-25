@@ -1,5 +1,6 @@
 @inherits LayoutComponentBase
 @inject QueuePanelState QueueState
+@inject MusicLibraryService Library
 @inject PlaybackService Playback
 @inject NavigationManager Nav
 @inject IJSRuntime JS
@@ -38,6 +39,16 @@
     private DotNetObjectReference<MainLayout>? _self;
 
     protected override void OnInitialized() => QueueState.Changed += OnQueueChanged;
+    protected override async Task OnInitializedAsync()
+    {
+        // A previous version may have saved an empty snapshot for a folder
+        // containing a format it did not yet recognize (for example OGG).
+        if (Library.Tracks.Count == 0 && Library.FolderPath is not null)
+        {
+            try { await Library.RefreshAsync(); }
+            catch { /* the folder may no longer be available; settings can fix it */ }
+        }
+    }
     private void OnQueueChanged(object? sender, EventArgs args) => InvokeAsync(StateHasChanged);
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
