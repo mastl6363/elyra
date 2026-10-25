@@ -7,7 +7,7 @@ keystore="${ELYRA_ANDROID_KEYSTORE:-$HOME/.android/debug.keystore}"
 alias_name="${ELYRA_ANDROID_KEY_ALIAS:-androiddebugkey}"
 store_pass="${ELYRA_ANDROID_STORE_PASSWORD:-android}"
 key_pass="${ELYRA_ANDROID_KEY_PASSWORD:-android}"
-output="$repo_dir/artifacts/android/elyra-1.5.1-arm64.apk"
+output="$repo_dir/artifacts/android/elyra-1.5.2-arm64.apk"
 
 if [[ ! -f "$keystore" ]]; then
     echo "Android-Signierschlüssel fehlt: $keystore" >&2

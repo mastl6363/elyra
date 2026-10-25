@@ -8,45 +8,59 @@
         var track = Tracks[index];
         var isCurrent = Playback.Current?.FilePath == track.FilePath;
 
-        <div class="group flex items-center gap-3 rounded-md px-3 py-2 transition-colors hover:bg-surface-2 @(isCurrent ? "bg-surface-2" : "")">
-            <button @onclick="() => Playback.Play(Tracks, index)" class="w-6 shrink-0 text-center" aria-label="Abspielen">
-                @if (isCurrent)
-                {
-                    <svg class="mx-auto h-4 w-4 text-accent" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
-                }
-                else
-                {
-                    <span class="text-sm text-muted group-hover:hidden">@(index + 1)</span>
-                    <svg class="mx-auto hidden h-4 w-4 text-ink group-hover:block" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
-                }
+        <div class="group flex gap-3 rounded-md px-3 py-2 transition-colors hover:bg-surface-2 @(isCurrent ? "bg-surface-2" : "") @(OperatingSystem.IsAndroid() ? "flex-col items-stretch" : "items-center")">
+            <button @onclick="() => Playback.Play(Tracks, index)"
+                    class="flex min-w-0 flex-1 items-center gap-3 rounded-md py-1 text-left"
+                    aria-label="@track.Title von @track.Artist abspielen">
+                <span class="w-6 shrink-0 text-center" aria-hidden="true">
+                    @if (isCurrent)
+                    {
+                        <svg class="mx-auto h-4 w-4 text-accent" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+                    }
+                    else
+                    {
+                        <span class="text-sm text-muted group-hover:hidden">@(index + 1)</span>
+                        <svg class="mx-auto hidden h-4 w-4 text-ink group-hover:block" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+                    }
+                </span>
+
+                <span class="min-w-0 flex-1">
+                    <span class="block truncate text-sm @(isCurrent ? "text-accent" : "text-ink")">@track.Title</span>
+                    <span class="block truncate text-xs text-muted">@track.Artist</span>
+                </span>
+
+                <span class="shrink-0 text-xs tabular-nums text-muted">@track.DurationLabel</span>
             </button>
 
-            <div class="min-w-0 flex-1">
-                <div class="truncate text-sm @(isCurrent ? "text-accent" : "text-ink")">@track.Title</div>
-                <div class="truncate text-xs text-muted">@track.Artist</div>
-            </div>
-
-            <div class="shrink-0 text-xs tabular-nums text-muted">@track.DurationLabel</div>
-
-            @if (ShowPlayNext)
+            @if (ShowPlayNext || ShowAdd || ShowRemove)
             {
-                <button @onclick="() => Playback.PlayNext(track)" class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted hover:bg-accent/15 hover:text-accent"
-                        title="Als Nächstes spielen" aria-label="@track.Title als Nächstes spielen">
-                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m5 5 10 7-10 7z"/><path d="M19 5v14"/><path d="M17 3h5"/></svg>
-                </button>
-            }
+                <div class="flex shrink-0 items-center gap-2 @(OperatingSystem.IsAndroid() ? "justify-end" : "")">
+                    @if (ShowPlayNext)
+                    {
+                        <button @onclick="() => QueueNextAsync(track)"
+                                class="flex h-9 shrink-0 items-center justify-center gap-2 rounded-full px-2 text-xs text-muted hover:bg-accent/15 hover:text-accent"
+                                title="Als Nächstes spielen" aria-label="@track.Title als Nächstes spielen">
+                            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h10M4 11h10M4 16h7M18 11v8M14 15h8" /></svg>
+                            @if (OperatingSystem.IsAndroid())
+                            {
+                                <span>@(_queuedTrackPath == track.FilePath ? _queueFeedback : "Als Nächstes")</span>
+                            }
+                        </button>
+                    }
 
-            @if (ShowAdd)
-            {
-                <AddToPlaylistButton Track="track" />
-            }
-            @if (ShowRemove)
-            {
-                <button @onclick="() => OnRemove.InvokeAsync(track)"
-                        class="shrink-0 text-muted opacity-0 transition-colors hover:text-ink group-hover:opacity-100"
-                        title="Entfernen" aria-label="Entfernen">
-                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
-                </button>
+                    @if (ShowAdd)
+                    {
+                        <AddToPlaylistButton Track="track" />
+                    }
+                    @if (ShowRemove)
+                    {
+                        <button @onclick="() => OnRemove.InvokeAsync(track)"
+                                class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:text-ink @(OperatingSystem.IsAndroid() ? "" : "opacity-0 group-hover:opacity-100")"
+                                title="Entfernen" aria-label="Entfernen">
+                            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                        </button>
+                    }
+                </div>
             }
         </div>
     }
@@ -58,8 +72,33 @@
     [Parameter] public bool ShowPlayNext { get; set; } = true;
     [Parameter] public bool ShowRemove { get; set; }
     [Parameter] public EventCallback<Track> OnRemove { get; set; }
+    private string? _queuedTrackPath;
+    private string _queueFeedback = "";
+    private CancellationTokenSource? _feedbackTimer;
+
+    private async Task QueueNextAsync(Track track)
+    {
+        _feedbackTimer?.Cancel();
+        _feedbackTimer?.Dispose();
+        var timer = new CancellationTokenSource();
+        _feedbackTimer = timer;
+        var wasPlaying = Playback.Current is not null;
+        Playback.PlayNext(track);
+        _queuedTrackPath = track.FilePath;
+        _queueFeedback = wasPlaying ? "Vorgemerkt ✓" : "Spielt jetzt";
+        await InvokeAsync(StateHasChanged);
+        try { await Task.Delay(TimeSpan.FromSeconds(3), timer.Token); }
+        catch (OperationCanceledException) { return; }
+        _queuedTrackPath = null;
+        await InvokeAsync(StateHasChanged);
+    }
 
     protected override void OnInitialized() => Playback.CurrentChanged += OnChanged;
     private void OnChanged(object? sender, EventArgs e) => InvokeAsync(StateHasChanged);
-    public void Dispose() => Playback.CurrentChanged -= OnChanged;
+    public void Dispose()
+    {
+        Playback.CurrentChanged -= OnChanged;
+        _feedbackTimer?.Cancel();
+        _feedbackTimer?.Dispose();
+    }
 }

@@ -35,8 +35,8 @@
         <ApplicationId>com.mastl.elyra</ApplicationId>
 
         <!-- Versions -->
-        <ApplicationDisplayVersion>1.5.1</ApplicationDisplayVersion>
-        <ApplicationVersion>151</ApplicationVersion>
+        <ApplicationDisplayVersion>1.5.2</ApplicationDisplayVersion>
+        <ApplicationVersion>152</ApplicationVersion>
 
         <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">15.0</SupportedOSPlatformVersion>
         <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'">15.0</SupportedOSPlatformVersion>
