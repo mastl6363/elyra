@@ -55,6 +55,26 @@ MSBuild-Target `TailwindBuild`.
 
 > iOS-Build benötigt einen Mac (Pair to Mac).
 
+## Android auf dem eigenen Gerät
+
+Für ARM64-Geräte erzeugt `packaging/android/build-apk.sh` eine signierte APK unter
+`artifacts/android/elyra-1.5.0-arm64.apk`. Der Build benötigt das .NET Android
+Workload und einen Android-Signierschlüssel. Standardmäßig wird der lokale
+Debug-Keystore (`~/.android/debug.keystore`) verwendet. Für spätere Updates
+muss derselbe Schlüssel erhalten bleiben. Ein eigener Schlüssel kann über
+`ELYRA_ANDROID_KEYSTORE`, `ELYRA_ANDROID_KEY_ALIAS`,
+`ELYRA_ANDROID_STORE_PASSWORD` und `ELYRA_ANDROID_KEY_PASSWORD` gesetzt werden.
+
+```bash
+./packaging/android/build-apk.sh
+adb devices
+adb -s <geraete-id> install -r artifacts/android/elyra-1.5.0-arm64.apk
+```
+
+Auf Android wählt „Ordner auswählen“ einen Musikordner über den Systemdialog.
+Elyra kopiert MP3-, FLAC- und OGG-Dateien daraus in den App-Speicher. Mit „Neu
+einlesen“ werden spätere Änderungen im ausgewählten Ordner übernommen.
+
 ## Linux-Desktop (nativ, ohne Emulator)
 
 `src/Elyra.Desktop` ist ein separater Blazor-Server-Host für Linux-Desktops. Er

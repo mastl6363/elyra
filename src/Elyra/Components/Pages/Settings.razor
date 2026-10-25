@@ -21,6 +21,10 @@
             <div>
                 <div class="text-xs uppercase tracking-wide text-muted">Musikordner</div>
                 <div class="mt-1 break-all text-sm text-ink">@(Library.FolderPath ?? "Noch kein Ordner ausgewählt")</div>
+                @if (OperatingSystem.IsAndroid())
+                {
+                    <div class="mt-1 text-xs text-muted">Android kopiert ausgewählte Musik in den App-Speicher. „Neu einlesen“ übernimmt spätere Änderungen im gewählten Ordner.</div>
+                }
                 @if (Library.Tracks.Count > 0)
                 {
                     <div class="mt-1 text-xs text-muted">@Library.Albums.Count Alben · @Library.Tracks.Count Titel</div>
@@ -28,11 +32,11 @@
             </div>
 
             <div class="flex flex-wrap gap-2">
-                <button @onclick="ChooseFolderAsync" disabled="@Library.IsScanning"
+                <button @onclick="ChooseFolderAsync" disabled="@(Library.IsScanning || _isChoosingFolder)"
                         class="rounded-full bg-accent px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50">
                     Ordner ändern
                 </button>
-                <button @onclick="RefreshAsync" disabled="@(Library.IsScanning || Library.FolderPath is null)"
+                <button @onclick="RefreshAsync" disabled="@(Library.IsScanning || _isChoosingFolder || Library.FolderPath is null)"
                         class="rounded-full bg-surface-2 px-4 py-2 text-sm text-ink hover:bg-line disabled:opacity-50">
                     Neu einlesen
                 </button>
@@ -42,11 +46,11 @@
                 </button>
             </div>
 
-            @if (Library.IsScanning)
+            @if (Library.IsScanning || _isChoosingFolder)
             {
                 <div class="flex items-center gap-2 text-sm text-muted">
                     <div class="h-4 w-4 animate-spin rounded-full border-2 border-line border-t-accent"></div>
-                    Sammlung wird eingelesen …
+                    @(_isChoosingFolder ? "Musik wird aus dem ausgewählten Ordner kopiert …" : "Sammlung wird eingelesen …")
                 </div>
             }
             @if (!string.IsNullOrEmpty(_message))
@@ -181,6 +185,7 @@
     private bool _nextcloudError;
     private bool _nextcloudBusy;
     private CancellationTokenSource? _nextcloudCancellation;
+    private bool _isChoosingFolder;
 
     private int MissingAlbumCount => Library.Tracks.Count(track => string.IsNullOrWhiteSpace(track.Album));
     private int EligibleMetadataCount => Library.Tracks.Count(track =>
@@ -236,6 +241,7 @@
 
     private async Task ChooseFolderAsync()
     {
+        _isChoosingFolder = true;
         try
         {
             var folder = await FolderPicker.PickFolderAsync();
@@ -249,19 +255,23 @@
         {
             SetMessage(ex.Message, true);
         }
+        finally { _isChoosingFolder = false; }
     }
 
     private async Task RefreshAsync()
     {
+        _isChoosingFolder = true;
         try
         {
-            await Library.RefreshAsync();
+            var folder = await FolderPicker.PrepareRefreshAsync(Library.FolderPath!);
+            await Library.ImportFolderAsync(folder);
             SetMessage("Mediathek wurde aktualisiert.");
         }
         catch (Exception ex)
         {
             SetMessage(ex.Message, true);
         }
+        finally { _isChoosingFolder = false; }
     }
 
     private void ClearLibrary()

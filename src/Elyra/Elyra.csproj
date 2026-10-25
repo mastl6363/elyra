@@ -32,11 +32,11 @@
         <ApplicationTitle>Elyra</ApplicationTitle>
 
         <!-- App Identifier -->
-        <ApplicationId>com.companyname.elyra</ApplicationId>
+        <ApplicationId>com.mastl.elyra</ApplicationId>
 
         <!-- Versions -->
-        <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
-        <ApplicationVersion>1</ApplicationVersion>
+        <ApplicationDisplayVersion>1.5.0</ApplicationDisplayVersion>
+        <ApplicationVersion>150</ApplicationVersion>
 
         <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">15.0</SupportedOSPlatformVersion>
         <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'">15.0</SupportedOSPlatformVersion>
@@ -45,6 +45,12 @@
         <TargetPlatformMinVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</TargetPlatformMinVersion>
     </PropertyGroup>
 
+    <!-- VideoLAN's Android targets select native VLC libraries from RuntimeIdentifiers.
+         Keep the default focused on the owner's ARM64 device; override this property
+         when building an emulator APK (android-x64). -->
+    <PropertyGroup Condition="'$(TargetFramework)' == 'net10.0-android' and '$(RuntimeIdentifiers)' == ''">
+        <RuntimeIdentifiers>android-arm64</RuntimeIdentifiers>
+    </PropertyGroup>
     <ItemGroup>
         <!-- App Icon -->
         <MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#0a0a0f" />
