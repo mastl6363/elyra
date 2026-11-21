@@ -13,11 +13,14 @@ public sealed class AudioPlayerService : IDisposable
 {
     private readonly LibVLC _libVLC;
     private readonly MediaPlayer _player;
+    private Attempt? _attempt;
 
     public AudioPlayerService()
     {
         // Core.Initialize() must already have run (see MauiProgram).
-        _libVLC = new LibVLC();
+        _libVLC = OperatingSystem.IsWindows()
+            ? Task.Run(() => new LibVLC()).GetAwaiter().GetResult()
+            : new LibVLC();
         _player = new MediaPlayer(_libVLC);
 
         // LibVLC raises these on its own callback threads. Blazor may render
@@ -25,10 +28,20 @@ public sealed class AudioPlayerService : IDisposable
         // During a track transition that can wait on the same native VLC lock
         // held by Play(Media), deadlocking both the UI and playback. Never run
         // subscribers synchronously on a LibVLC callback thread.
-        _player.Playing     += (_, _) => Dispatch(() => StateChanged?.Invoke(this, EventArgs.Empty));
+        _player.Playing += (_, _) =>
+        {
+            var attempt = Volatile.Read(ref _attempt);
+            if (attempt is not null) attempt.Started = true;
+            Dispatch(() => StateChanged?.Invoke(this, EventArgs.Empty));
+        };
         _player.Paused      += (_, _) => Dispatch(() => StateChanged?.Invoke(this, EventArgs.Empty));
-        _player.Stopped     += (_, _) => Dispatch(() => StateChanged?.Invoke(this, EventArgs.Empty));
-        _player.EndReached  += (_, _) => Dispatch(() => TrackEnded?.Invoke(this, EventArgs.Empty));
+        _player.Stopped += (_, _) =>
+        {
+            FinishCurrentAttempt(failed: true);
+            Dispatch(() => StateChanged?.Invoke(this, EventArgs.Empty));
+        };
+        _player.EndReached += (_, _) => FinishCurrentAttempt(failed: false);
+        _player.EncounteredError += (_, _) => FinishCurrentAttempt(failed: true);
         _player.TimeChanged += (_, e) =>
         {
             var position = TimeSpan.FromMilliseconds(e.Time);
@@ -42,11 +55,28 @@ public sealed class AudioPlayerService : IDisposable
     /// <summary>Fires roughly every ~250 ms while playing, with the new position.</summary>
     public event EventHandler<TimeSpan>? PositionChanged;
 
-    /// <summary>Fires when the current track plays to its end (for auto-advance).</summary>
-    public event EventHandler? TrackEnded;
+    internal sealed class Attempt
+    {
+        internal volatile bool Started;
+        internal int Completed;
+    }
 
-    /// <summary>Fires when a requested local file no longer exists (e.g. a stale playlist entry).</summary>
-    public event EventHandler? PlaybackFailed;
+    internal event EventHandler<(Attempt Attempt, bool Failed)>? PlaybackCompleted;
+
+    internal bool IsCurrent(Attempt attempt) => ReferenceEquals(Volatile.Read(ref _attempt), attempt);
+
+    private void FinishCurrentAttempt(bool failed)
+    {
+        if (Volatile.Read(ref _attempt) is { } attempt) Finish(attempt, failed);
+    }
+
+    private void Finish(Attempt attempt, bool failed)
+    {
+        if (Interlocked.Exchange(ref attempt.Completed, 1) != 0) return;
+        // LibVLC can report an unreadable input as EndReached without ever reaching Playing.
+        var result = (attempt, failed || !attempt.Started);
+        Dispatch(() => PlaybackCompleted?.Invoke(this, result));
+    }
 
     private static void Dispatch(Action action) => ThreadPool.QueueUserWorkItem(
         static state => ((Action)state!).Invoke(), action);
@@ -55,10 +85,10 @@ public sealed class AudioPlayerService : IDisposable
     public MediaPlayer MediaPlayer => _player;
 
     /// <summary>Current playback position.</summary>
-    public TimeSpan Position => TimeSpan.FromMilliseconds(_player.Time < 0 ? 0 : _player.Time);
+    public TimeSpan Position => TimeSpan.FromMilliseconds(Math.Max(0, _player.Time));
 
     /// <summary>Total length of the loaded track (0 if unknown/not loaded).</summary>
-    public TimeSpan Duration => TimeSpan.FromMilliseconds(_player.Length < 0 ? 0 : _player.Length);
+    public TimeSpan Duration => TimeSpan.FromMilliseconds(Math.Max(0, _player.Length));
 
     /// <summary>Volume in the range 0–100. LibVLC reports -1 before media loads.</summary>
     public int Volume
@@ -68,40 +98,36 @@ public sealed class AudioPlayerService : IDisposable
     }
 
     /// <summary>Loads and starts playing a local file path.</summary>
-    public void Play(string filePath)
+    public void Play(string filePath) => PlayMedia(filePath, FromType.FromPath, audioOnly: true);
+
+    /// <summary>Loads and starts an HTTP(S) audio stream.</summary>
+    public void PlayLocation(string url) => PlayMedia(url, FromType.FromLocation, audioOnly: true);
+
+    public void PlayVideo(VideoItem video) => PlayMedia(video.PlaybackLocation,
+        video.Kind == VideoSourceKind.Dvd ? FromType.FromLocation : FromType.FromPath, audioOnly: false);
+
+    private void PlayMedia(string source, FromType type, bool audioOnly)
     {
-        // A track can reference a file that was deleted or moved since it was added
-        // to a playlist/library snapshot. Without this check, LibVLC fails to open
-        // it asynchronously and playback silently gets stuck on the dead track.
-        if (!File.Exists(filePath))
+        // Stop drains the previous input before a new attempt can receive native events.
+        if (Volatile.Read(ref _attempt) is not null) Stop();
+        var attempt = new Attempt();
+        Volatile.Write(ref _attempt, attempt);
+        if (type == FromType.FromPath && !File.Exists(source))
         {
-            PlaybackFailed?.Invoke(this, EventArgs.Empty);
+            Finish(attempt, failed: true);
             return;
         }
 
-        using var media = new Media(_libVLC, filePath, FromType.FromPath);
-        _player.Play(media);
+        using var media = new Media(_libVLC, source, type);
+        if (audioOnly) media.AddOption(":no-video");
+        if (!_player.Play(media)) Finish(attempt, failed: true);
     }
 
-    /// <summary>Loads and starts an HTTP(S) radio stream.</summary>
-    public void PlayLocation(string url)
+    public bool Pause()
     {
-        using var media = new Media(_libVLC, url, FromType.FromLocation);
-        _player.Play(media);
-    }
-
-    public void PlayVideo(VideoItem video)
-    {
-        if (video.Kind == VideoSourceKind.Dvd)
-            PlayLocation(video.PlaybackLocation);
-        else
-            Play(video.Source);
-    }
-
-    public void Pause()
-    {
-        if (_player.CanPause)
-            _player.SetPause(true);
+        if (!_player.CanPause) return false;
+        _player.SetPause(true);
+        return true;
     }
 
     public void Resume() => _player.SetPause(false);
@@ -109,7 +135,11 @@ public sealed class AudioPlayerService : IDisposable
     /// <summary>Toggles between play and pause for the loaded track.</summary>
     public void TogglePlayPause() => _player.Pause();
 
-    public void Stop() => _player.Stop();
+    public void Stop()
+    {
+        Volatile.Write(ref _attempt, null);
+        _player.Stop();
+    }
 
     /// <summary>Seeks to an absolute position within the current track.</summary>
     public void Seek(TimeSpan position) => _player.Time = (long)position.TotalMilliseconds;

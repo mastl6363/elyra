@@ -16,6 +16,7 @@ public sealed class PlaybackOrder
 
     public bool ShuffleEnabled { get; private set; }
     public int CurrentIndex { get; private set; } = -1;
+    public bool HasNext => ShuffleEnabled ? _shufflePosition + 1 < _shuffleOrder.Count : CurrentIndex + 1 < _count;
 
     /// <summary>Queue indices in the order they will actually play.</summary>
     public IReadOnlyList<int> UpcomingIndices => CurrentIndex < 0 ? [] : ShuffleEnabled
@@ -37,22 +38,8 @@ public sealed class PlaybackOrder
 
     public bool TryMoveNext(out int index)
     {
-        if (ShuffleEnabled)
-        {
-            if (_shufflePosition + 1 >= _shuffleOrder.Count)
-                return NoIndex(out index);
-
-            CurrentIndex = _shuffleOrder[++_shufflePosition];
-        }
-        else
-        {
-            if (CurrentIndex + 1 >= _count)
-                return NoIndex(out index);
-
-            CurrentIndex++;
-        }
-
-        index = CurrentIndex;
+        if (!HasNext) return NoIndex(out index);
+        CurrentIndex = index = ShuffleEnabled ? _shuffleOrder[++_shufflePosition] : CurrentIndex + 1;
         return true;
     }
 

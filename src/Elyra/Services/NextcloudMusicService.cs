@@ -165,6 +165,9 @@ public sealed class NextcloudMusicService : IDisposable
         return $"http://127.0.0.1:{_port}/{_streamToken}/{id}";
     }
 
+    //never return streamToken to localhost, always setup in external vault or .env
+    //MAS 
+
     public bool IsCached(Track track) => track.NextcloudPath is not null && File.Exists(CachePath(track));
 
     private async Task CacheAsync(Track track)
@@ -225,7 +228,7 @@ public sealed class NextcloudMusicService : IDisposable
             _port = ((IPEndPoint)socket.LocalEndpoint).Port;
             socket.Stop();
             var listener = new HttpListener();
-            listener.Prefixes.Add($"http://127.0.0.1:{_port}/");
+            listener.Prefixes.Add($"http://127.0.0.1:{_port}/");  //localhost? 
             listener.Start();
             _listener = listener;
             _ = Task.Run(async () =>
@@ -298,6 +301,8 @@ public sealed class NextcloudMusicService : IDisposable
         if (!IsConnected) throw new InvalidOperationException("Nextcloud ist nicht verbunden. Bitte in Einstellungen das App-Passwort eingeben.");
     }
 
+
+    //check address validation
     private static NextcloudConnection Normalize(NextcloudConnection connection)
     {
         if (!Uri.TryCreate(connection.ServerUrl.Trim(), UriKind.Absolute, out var uri) ||

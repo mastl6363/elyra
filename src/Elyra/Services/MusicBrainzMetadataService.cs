@@ -92,6 +92,9 @@ public sealed class MusicBrainzMetadataService
         return new MetadataEnrichmentResult(updates, matched, skipped, failed);
     }
 
+    //check if musicbrainz offers direct API (REST, SOAP) or anything of that kind
+    //MAS 
+
     private async Task<AlbumMatch?> FindAlbumAsync(Track track, CancellationToken cancellationToken)
     {
         var quantizedDuration = (long)track.Duration.TotalMilliseconds / 2000;
@@ -180,6 +183,9 @@ public sealed class MusicBrainzMetadataService
     }
 
     private sealed record AlbumMatch(string Album, string AlbumArtist, string? ReleaseDate, string ReleaseGroupId);
+
+    //IF API Data (JSON) is available direct deserialize it, build an extra class for it
+    //MAS
 
     private sealed class RecordingSearchResult
     {

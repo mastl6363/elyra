@@ -5,6 +5,11 @@ using LibVLCSharp.Shared;
 using LibVLCSharp.Shared.Structures;
 
 namespace Elyra;
+//Note from MASTL: the video player opens in a single frame without controlls, this must be evaluated and changed on the next implementation
+//sprint. 20.11.2026 /MAS
+//Button description in source code is missing, add next time. 
+
+
 
 /// <summary>Native, full-window video surface used for movies and DVD navigation.</summary>
 public sealed class VideoPlayerPage : ContentPage
@@ -108,6 +113,7 @@ public sealed class VideoPlayerPage : ContentPage
         _subtitles = TrackPicker("Untertitel");
         _subtitles.SelectedIndexChanged += (_, _) => SelectTrack(_subtitles, _subtitleIds, id => audio.MediaPlayer.SetSpu(id));
 
+        //issue for horizontal stack layout with many children:check next time to fit screen size
         var buttons = new HorizontalStackLayout
         {
             Spacing = 12,
@@ -179,6 +185,10 @@ public sealed class VideoPlayerPage : ContentPage
             _resumeApplied = true;
         }
     });
+
+
+    //Controlls are not funtioning according to last test on desktop (windows) 
+    //MAS
 
     private void OnStateChanged(object? sender, EventArgs args) =>
         Dispatcher.Dispatch(() => _playPause.Text = _audio.IsPlaying ? "⏸" : "▶");

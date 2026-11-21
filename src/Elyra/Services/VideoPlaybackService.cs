@@ -62,6 +62,9 @@ public sealed class VideoPlaybackService : IDisposable
         if (root?.Navigation.ModalStack.LastOrDefault() is VideoPlayerPage)
             await root.Navigation.PopModalAsync(false);
     });
+
+    //always let us know why outcomment this code, we need to check if the video player is working on the next sprint
+    //check why else statement is not working, maybe the video player is not working on the next sprint
 #else
     public Task OpenAsync(VideoItem video)
     {

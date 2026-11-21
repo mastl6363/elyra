@@ -8,30 +8,31 @@ namespace Elyra.Services;
 /// </summary>
 public sealed class PlaybackService
 {
-    // Guards _queue/_order: Next()/Previous() can be called from the UI thread
-    // (button click) at the same time TrackEnded fires and hops onto a thread-pool
-    // thread, and both paths read-then-mutate PlaybackOrder's internal state.
+    private const int MaxConsecutiveFailures = 3;
+    // Queue updates and native player commands must stay in the same order.
+    // Native completion callbacks reach this lock on the thread pool.
     private readonly object _sync = new();
     private readonly AudioPlayerService _audio;
     private readonly PlayHistoryService _history;
     private readonly NextcloudMusicService _nextcloud;
     private readonly PlaybackOrder _order = new();
-    private List<Track> _queue = new();
+    private IReadOnlyList<Track> _queue = [];
+    private RadioStation? _station;
+    private VideoItem? _video;
+    private string? _error;
+    private int _consecutiveFailures;
+    private bool _audioPlaybackRequested;
+    private bool _canResumePausedInput;
 
     public PlaybackService(AudioPlayerService audio, PlayHistoryService history, NextcloudMusicService nextcloud)
     {
         _audio = audio;
         _history = history;
         _nextcloud = nextcloud;
-        // Keep track advancement independent of event delivery; a player event
-        // must never call back into LibVLC synchronously.
-        _audio.TrackEnded += (_, _) => Task.Run(Next);
-        // A missing/deleted file (e.g. a stale playlist entry) must not leave
-        // "now playing" stuck forever — skip it like a track that ended.
-        _audio.PlaybackFailed += (_, _) => Task.Run(Next);
+        _audio.PlaybackCompleted += OnPlaybackCompleted;
     }
 
-    public IReadOnlyList<Track> Queue => _queue;
+    public IReadOnlyList<Track> Queue { get { lock (_sync) return _queue; } }
     public IReadOnlyList<Track> Upcoming
     {
         get
@@ -40,15 +41,16 @@ public sealed class PlaybackService
                 return _order.UpcomingIndices.Select(index => _queue[index]).ToList();
         }
     }
-    public int CurrentIndex => _order.CurrentIndex;
-    public Track? Current => CurrentIndex >= 0 && CurrentIndex < _queue.Count ? _queue[CurrentIndex] : null;
-    public RadioStation? CurrentStation { get; private set; }
-    public VideoItem? CurrentVideo { get; private set; }
-    public bool HasCurrent => Current is not null || CurrentStation is not null || CurrentVideo is not null;
-    public bool ShuffleEnabled => _order.ShuffleEnabled;
+    public int CurrentIndex { get { lock (_sync) return _order.CurrentIndex; } }
+    public Track? Current { get { lock (_sync) return CurrentTrack; } }
+    public RadioStation? CurrentStation { get { lock (_sync) return _station; } }
+    public VideoItem? CurrentVideo { get { lock (_sync) return _video; } }
+    public bool HasCurrent { get { lock (_sync) return CurrentTrack is not null || _station is not null || _video is not null; } }
+    public bool ShuffleEnabled { get { lock (_sync) return _order.ShuffleEnabled; } }
+    private Track? CurrentTrack => _order.CurrentIndex >= 0 ? _queue[_order.CurrentIndex] : null;
 
     public bool IsPlaying => _audio.IsPlaying;
-    public string? PlaybackError { get; private set; }
+    public string? PlaybackError { get { lock (_sync) return _error; } }
     public TimeSpan Position => _audio.Position;
     public TimeSpan Duration => _audio.Duration;
 
@@ -63,71 +65,77 @@ public sealed class PlaybackService
 
     public void Play(IEnumerable<Track> tracks, int startIndex = 0)
     {
-        bool hasTracks;
+        var queue = tracks.ToList().AsReadOnly();
         lock (_sync)
         {
-            CurrentStation = null;
-            CurrentVideo = null;
-            _queue = tracks.ToList();
+            _station = null;
+            _video = null;
+            _error = null;
+            _consecutiveFailures = 0;
+            _queue = queue;
             _order.Reset(_queue.Count, startIndex);
-            hasTracks = _queue.Count > 0;
+            if (queue.Count == 0) StopPlayback();
+            else StartAudio();
         }
-
-        if (!hasTracks)
-        {
-            CurrentChanged?.Invoke(this, EventArgs.Empty);
-            return;
-        }
-        StartCurrentTrack();
+        CurrentChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public void PlayRadio(RadioStation station)
     {
-        PlaybackError = null;
         lock (_sync)
         {
             _queue = [];
             _order.Reset(0, 0);
-            CurrentStation = station;
-            CurrentVideo = null;
+            _station = station;
+            _video = null;
+            _consecutiveFailures = 0;
+            StartAudio();
         }
-        _audio.PlayLocation(station.StreamUrl);
         CurrentChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public void PlayVideo(VideoItem video)
     {
-        PlaybackError = null;
         lock (_sync)
         {
             _queue = [];
             _order.Reset(0, 0);
-            CurrentStation = null;
-            CurrentVideo = video;
+            _station = null;
+            _video = video;
+            _error = null;
+            _audioPlaybackRequested = false;
+            _canResumePausedInput = false;
+            _audio.PlayVideo(video);
         }
-        _audio.PlayVideo(video);
         CurrentChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public void StopVideo()
     {
-        if (CurrentVideo is null) return;
-        _audio.Stop();
-        CurrentVideo = null;
+        lock (_sync)
+        {
+            if (_video is null) return;
+            StopPlayback();
+            _video = null;
+        }
         CurrentChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    private void StartCurrentTrack()
+    // These helpers run with _sync held. CurrentChanged is raised after releasing it.
+    private void StartAudio()
     {
-        Track track;
-        lock (_sync)
-        {
-            if (CurrentIndex < 0 || CurrentIndex >= _queue.Count) return;
-            track = _queue[CurrentIndex];
-        }
         try
         {
-            PlaybackError = null;
+            _error = null;
+            _canResumePausedInput = false;
+            if (_station is { } station)
+            {
+                BeginAudioPlayback();
+                _audio.PlayLocation(station.StreamUrl);
+                return;
+            }
+            if (CurrentTrack is not { } track) return;
+            BeginAudioPlayback();
             if (track.NextcloudPath is null) _audio.Play(track.FilePath);
             else
             {
@@ -139,8 +147,55 @@ public sealed class PlaybackService
         }
         catch (Exception ex)
         {
-            _audio.Stop();
-            PlaybackError = ex.Message;
+            StopPlayback();
+            _error = ex.Message;
+        }
+    }
+
+    private void BeginAudioPlayback()
+    {
+#if ANDROID
+        if (!_audioPlaybackRequested) MediaPlaybackForegroundService.Start();
+#endif
+        _audioPlaybackRequested = true;
+    }
+
+    private void StopPlayback()
+    {
+        _audioPlaybackRequested = false;
+        _canResumePausedInput = false;
+        _audio.Stop();
+    }
+
+    private void OnPlaybackCompleted(object? sender, (AudioPlayerService.Attempt Attempt, bool Failed) result)
+    {
+        lock (_sync)
+        {
+            if (!_audio.IsCurrent(result.Attempt)) return;
+            if (_video is not null)
+            {
+                if (!result.Failed) return;
+                StopPlayback();
+                _error = "Das Video konnte nicht wiedergegeben werden.";
+            }
+            else
+            {
+                _canResumePausedInput = false;
+                if (!_audioPlaybackRequested) return;
+                if (result.Attempt.Started) _consecutiveFailures = 0;
+                if (result.Failed) _consecutiveFailures++;
+
+                if (_station is null && _consecutiveFailures < MaxConsecutiveFailures && _order.TryMoveNext(out _))
+                    StartAudio();
+                else
+                {
+                    StopPlayback();
+                    if (result.Failed)
+                        _error = _consecutiveFailures >= MaxConsecutiveFailures
+                            ? "Wiedergabe nach drei aufeinanderfolgenden Fehlern gestoppt."
+                            : "Das Medium konnte nicht wiedergegeben werden.";
+                }
+            }
         }
         CurrentChanged?.Invoke(this, EventArgs.Empty);
     }
@@ -153,26 +208,32 @@ public sealed class PlaybackService
 
     public void PlayNext(Track track)
     {
-        if (Current is null)
-        {
-            Play([track]);
-            return;
-        }
-
         lock (_sync)
         {
-            var queue = _queue.ToList();
-            if (_order.ShuffleEnabled)
+            if (CurrentTrack is null)
             {
-                queue.Add(track);
-                _order.AppendNextInShuffle();
+                _station = null;
+                _video = null;
+                _consecutiveFailures = 0;
+                _queue = Array.AsReadOnly(new[] { track });
+                _order.Reset(1, 0);
+                StartAudio();
             }
             else
             {
-                queue.Insert(_order.CurrentIndex + 1, track);
-                _order.Reset(queue.Count, _order.CurrentIndex);
+                var queue = _queue.ToList();
+                if (_order.ShuffleEnabled)
+                {
+                    queue.Add(track);
+                    _order.AppendNextInShuffle();
+                }
+                else
+                {
+                    queue.Insert(_order.CurrentIndex + 1, track);
+                    _order.Reset(queue.Count, _order.CurrentIndex);
+                }
+                _queue = queue.AsReadOnly();
             }
-            _queue = queue;
         }
         CurrentChanged?.Invoke(this, EventArgs.Empty);
     }
@@ -184,7 +245,7 @@ public sealed class PlaybackService
             if ((uint)position >= (uint)_order.UpcomingIndices.Count) return;
             var queue = _queue.ToList();
             queue.RemoveAt(_order.RemoveUpcomingAt(position));
-            _queue = queue;
+            _queue = queue.AsReadOnly();
         }
         CurrentChanged?.Invoke(this, EventArgs.Empty);
     }
@@ -204,7 +265,7 @@ public sealed class PlaybackService
                 var queue = _queue.ToList();
                 (queue[upcoming[position]], queue[upcoming[next]]) =
                     (queue[upcoming[next]], queue[upcoming[position]]);
-                _queue = queue;
+                _queue = queue.AsReadOnly();
             }
         }
         CurrentChanged?.Invoke(this, EventArgs.Empty);
@@ -212,46 +273,103 @@ public sealed class PlaybackService
 
     public void TogglePlayPause()
     {
-        if (HasCurrent)
-            _audio.TogglePlayPause();
+        lock (_sync)
+        {
+            if (_video is not null) _audio.TogglePlayPause();
+            else SetAudioPaused(_audioPlaybackRequested);
+        }
+        CurrentChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void SetAudioPaused(bool paused)
+    {
+        if (_audioPlaybackRequested != paused || (CurrentTrack is null && _station is null)) return;
+        if (paused)
+        {
+            _audioPlaybackRequested = false;
+            _canResumePausedInput = _audio.Pause();
+            if (!_canResumePausedInput) _audio.Stop();
+            return;
+        }
+
+        if (!_canResumePausedInput)
+        {
+            _consecutiveFailures = 0;
+            StartAudio();
+            return;
+        }
+
+        try
+        {
+            BeginAudioPlayback();
+            _audio.Resume();
+            _canResumePausedInput = false;
+        }
+        catch (Exception ex)
+        {
+            StopPlayback();
+            _error = ex.Message;
+        }
     }
 
     public void Next()
     {
-        bool moved;
         lock (_sync)
         {
-            if (CurrentStation is not null || CurrentVideo is not null) return;
-            moved = _order.TryMoveNext(out _);
+            if (_station is not null || _video is not null) return;
+            _consecutiveFailures = 0;
+            if (_order.TryMoveNext(out _)) StartAudio();
+            else StopPlayback();
         }
-
-        if (moved)
-            StartCurrentTrack();
-        else
-            _audio.Stop();
+        CurrentChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public void Previous()
     {
         lock (_sync)
-            if (CurrentStation is not null || CurrentVideo is not null) return;
-
-        // Restart the current track if we're more than 3s in (or it's the first one),
-        // otherwise step back to the previous track.
-        if (_audio.Position.TotalSeconds > 3)
         {
-            _audio.Seek(TimeSpan.Zero);
-            return;
+            if (_station is not null || _video is not null) return;
+            if (_audio.Position.TotalSeconds > 3 || !_order.TryMovePrevious(out _))
+                _audio.Seek(TimeSpan.Zero);
+            else
+            {
+                _consecutiveFailures = 0;
+                StartAudio();
+            }
         }
-
-        bool moved;
-        lock (_sync) moved = _order.TryMovePrevious(out _);
-
-        if (moved)
-            StartCurrentTrack();
-        else
-            _audio.Seek(TimeSpan.Zero);
+        CurrentChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    public void Seek(TimeSpan position) => _audio.Seek(position);
+    public void Seek(TimeSpan position)
+    {
+        lock (_sync) _audio.Seek(position);
+        CurrentChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+#if ANDROID
+    internal (bool Requested, Track? Track, RadioStation? Station, bool HasNext) GetAudioSession()
+    {
+        lock (_sync) return (_audioPlaybackRequested, CurrentTrack, _station, _order.HasNext);
+    }
+
+    internal void SetAudioSessionPaused(bool paused)
+    {
+        lock (_sync)
+        {
+            if (_video is not null) return;
+            SetAudioPaused(paused);
+        }
+        CurrentChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    internal void StopAudioSession()
+    {
+        lock (_sync)
+        {
+            if (!_audioPlaybackRequested) return;
+            StopPlayback();
+        }
+        CurrentChanged?.Invoke(this, EventArgs.Empty);
+    }
+#endif
 }
